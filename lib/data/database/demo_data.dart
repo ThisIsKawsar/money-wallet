@@ -1,4 +1,6 @@
+import 'dart:convert';
 import 'package:flutter/services.dart' show rootBundle;
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:cashpilot/core/utils/data_transfer.dart';
 import 'package:cashpilot/data/database/database_helper.dart';
@@ -14,6 +16,10 @@ class DemoData {
   static const prefix = 'demo_';
   static const csvAsset = 'assets/demo/demo_transactions.csv';
 
+  /// Opening balances added to accounts by [seed] ({accountId: amount}),
+  /// kept so [clear] can take exactly that amount back out.
+  static const _kOpenings = 'demoOpeningBalances';
+
   static const _tables = [
     'transactions',
     'accounts',
@@ -28,7 +34,13 @@ class DemoData {
 
   static Future<void> clear() async {
     final db = await DatabaseHelper.instance.database;
+    final prefs = await SharedPreferences.getInstance();
+    final openings = _readOpenings(prefs);
     await db.transaction((txn) async {
+      for (final e in openings.entries) {
+        await txn.rawUpdate('UPDATE accounts SET balance = balance - ? WHERE id = ?', [e.value, e.key]);
+      }
+
       // Also drop anything the user recorded against demo accounts.
       const where = 'id LIKE ? OR accountId LIKE ? OR toAccountId LIKE ?';
       const args = ['$prefix%', '$prefix%', '$prefix%'];
@@ -49,6 +61,38 @@ class DemoData {
         await txn.delete(t, where: 'id LIKE ?', whereArgs: ['$prefix%']);
       }
     });
+    await prefs.remove(_kOpenings);
+  }
+
+  static Map<String, double> _readOpenings(SharedPreferences prefs) {
+    try {
+      final raw = prefs.getString(_kOpenings);
+      if (raw == null) return {};
+      return (jsonDecode(raw) as Map<String, dynamic>)
+          .map((k, v) => MapEntry(k, (v as num).toDouble()));
+    } catch (_) {
+      return {};
+    }
+  }
+
+  /// The CSV has no opening balances, so replaying it alone drives accounts
+  /// below zero. Give each account a round opening amount that keeps its
+  /// running balance at or above zero for the whole history.
+  static Map<String, double> _openingBalances(List<(DateTime, String, String?, TransactionType, double)> txs) {
+    final sorted = [...txs]..sort((a, b) => a.$1.compareTo(b.$1));
+    final running = <String, double>{};
+    final lowest = <String, double>{};
+    for (final t in sorted) {
+      DataTransfer.addBalanceDelta(running, t.$4, t.$5, t.$2, t.$3);
+      for (final id in [t.$2, if (t.$3 != null) t.$3!]) {
+        final v = running[id] ?? 0;
+        if (v < (lowest[id] ?? 0)) lowest[id] = v;
+      }
+    }
+    return {
+      for (final e in lowest.entries)
+        if (e.value < 0) e.key: ((-e.value / 1000).ceil() * 1000).toDouble(),
+    };
   }
 
   static Future<void> seed() async {
@@ -56,6 +100,7 @@ class DemoData {
     final parsed = DataTransfer.parseTransactionsCsv(await rootBundle.loadString(csvAsset));
     final db = await DatabaseHelper.instance.database;
     final now = DateTime.now();
+    var openings = <String, double>{};
 
     await db.transaction((txn) async {
       final accIds = await _accountIds(txn, parsed.rows);
@@ -65,6 +110,7 @@ class DemoData {
       // ── Transactions (from the CSV) ────────────────────────────────────
       final batch = txn.batch();
       final delta = <String, double>{};
+      final replay = <(DateTime, String, String?, TransactionType, double)>[];
       var n = 0;
       for (final r in parsed.rows) {
         final from = accIds[r.account.toLowerCase()]!;
@@ -85,6 +131,11 @@ class DemoData {
           ).toMap(),
         );
         DataTransfer.addBalanceDelta(delta, type, r.amount, from, to);
+        replay.add((r.date, from, to, type, r.amount));
+      }
+      openings = _openingBalances(replay);
+      for (final e in openings.entries) {
+        delta[e.key] = (delta[e.key] ?? 0) + e.value;
       }
       for (final e in delta.entries) {
         batch.rawUpdate('UPDATE accounts SET balance = balance + ? WHERE id = ?', [e.value, e.key]);
@@ -130,6 +181,9 @@ class DemoData {
 
       await batch.commit(noResult: true);
     });
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_kOpenings, jsonEncode(openings));
   }
 
   static String _slug(String s) => s.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');

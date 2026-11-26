@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:go_router/go_router.dart';
 import 'package:cashpilot/core/theme/app_colors.dart';
 import 'package:cashpilot/core/utils/data_transfer.dart';
 import 'package:cashpilot/providers/account_provider.dart';
@@ -74,7 +75,34 @@ class _ImportExportScreenState extends State<ImportExportScreen> {
             : 'Imported ${res.added} transactions${res.skipped > 0 ? ' · ${res.skipped} skipped' : ''}',
         icon: Icons.check_circle_rounded,
       );
+      final negative = context.read<AccountProvider>().accounts.where((a) => a.balance < 0).toList();
+      if (res.kind == 'csv' && negative.isNotEmpty) await _showBalanceHint(negative.map((a) => a.name).toList());
     });
+  }
+
+  Future<void> _showBalanceHint(List<String> names) {
+    return showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Set your account balances'),
+        content: Text(
+          'A CSV only has transactions, not the money each account started with, '
+          'so ${names.join(', ')} ${names.length == 1 ? 'is' : 'are'} now below zero.\n\n'
+          'Open Accounts, tap an account, then the edit button, and enter its real '
+          'Current Balance.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Later')),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              context.go('/accounts');
+            },
+            child: const Text('Open Accounts'),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _exportCsv() {
@@ -251,6 +279,8 @@ class _ImportExportScreenState extends State<ImportExportScreen> {
           children: const [
             _Bullet('A CSV exported from CashPilot can be imported back as is. Both use the same format.'),
             _Bullet('Account balances are updated from the imported income, expenses and transfers.'),
+            _Bullet('A CSV has no opening balances, so accounts can show a minus balance after import. '
+                'Fix it by editing the account and entering its real Current Balance.'),
             _Bullet('Rows that already exist (same time, type, amount and note) are skipped, so importing the same file twice is safe.'),
             _Bullet('Rows with an unknown type, a missing amount or an unreadable time are skipped.'),
             _Bullet('A .json backup restores accounts, categories, transactions, budgets and goals.'),
