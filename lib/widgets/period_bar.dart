@@ -143,19 +143,26 @@ class PeriodSummaryBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     final settings = context.watch<SettingsProvider>();
     final fmt = NumberFormat('#,##0.00', 'en_US');
 
     return Container(
-      margin: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-      padding: const EdgeInsets.fromLTRB(10, 8, 10, 12),
+      margin: const EdgeInsets.fromLTRB(16, 4, 16, 10),
+      padding: const EdgeInsets.fromLTRB(14, 10, 14, 14),
       decoration: BoxDecoration(
-        color: isDark ? AppColors.darkCard : AppColors.lightSurface,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-          color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
+        gradient: LinearGradient(
+          colors: AppColors.primaryGradient,
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
         ),
+        borderRadius: BorderRadius.circular(22),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.primary.withValues(alpha: 0.25),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
+          ),
+        ],
       ),
       child: Column(
         children: [
@@ -163,7 +170,7 @@ class PeriodSummaryBar extends StatelessWidget {
             children: [
               IconButton(
                 onPressed: onPrev,
-                icon: const Icon(Icons.chevron_left_rounded),
+                icon: const Icon(Icons.chevron_left_rounded, color: Colors.white),
                 visualDensity: VisualDensity.compact,
               ),
               Expanded(
@@ -171,15 +178,15 @@ class PeriodSummaryBar extends StatelessWidget {
                   PeriodHelpers.label(anchor, settings.filterPeriod),
                   textAlign: TextAlign.center,
                   style: GoogleFonts.plusJakartaSans(
-                    fontSize: 15,
+                    fontSize: 16,
                     fontWeight: FontWeight.w700,
-                    color: isDark ? Colors.white : AppColors.lightTextPrimary,
+                    color: Colors.white,
                   ),
                 ),
               ),
               IconButton(
                 onPressed: onNext,
-                icon: const Icon(Icons.chevron_right_rounded),
+                icon: const Icon(Icons.chevron_right_rounded, color: Colors.white),
                 visualDensity: VisualDensity.compact,
               ),
               if (showFilterButton)
@@ -188,9 +195,9 @@ class PeriodSummaryBar extends StatelessWidget {
                     await showDisplayOptionsDialog(context);
                     onPeriodModeChanged?.call();
                   },
-                  icon: Icon(
+                  icon: const Icon(
                     Icons.filter_list_rounded,
-                    color: AppColors.primary,
+                    color: Colors.white,
                     size: 22,
                   ),
                   visualDensity: VisualDensity.compact,
@@ -198,43 +205,47 @@ class PeriodSummaryBar extends StatelessWidget {
                 ),
             ],
           ),
-          if (settings.showTotal) ...[
-            const SizedBox(height: 6),
-            Divider(
-              height: 1,
-              color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
+          const SizedBox(height: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.16),
+              borderRadius: BorderRadius.circular(14),
             ),
-            const SizedBox(height: 10),
-            Row(
+            child: Row(
               children: [
                 Expanded(
                   child: _StatCol(
                     label: 'EXPENSE',
-                    value: '$currencySymbol${fmt.format(expense)}',
-                    color: AppColors.expense,
-                    isDark: isDark,
+                    value: '-$currencySymbol${fmt.format(expense)}',
                   ),
+                ),
+                Container(
+                  width: 1,
+                  height: 28,
+                  color: Colors.white.withValues(alpha: 0.24),
                 ),
                 Expanded(
                   child: _StatCol(
                     label: 'INCOME',
                     value: '$currencySymbol${fmt.format(income)}',
-                    color: AppColors.income,
-                    isDark: isDark,
                   ),
+                ),
+                Container(
+                  width: 1,
+                  height: 28,
+                  color: Colors.white.withValues(alpha: 0.24),
                 ),
                 Expanded(
                   child: _StatCol(
                     label: 'TOTAL',
                     value:
                         '${total < 0 ? '-' : ''}$currencySymbol${fmt.format(total.abs())}',
-                    color: total < 0 ? AppColors.expense : AppColors.income,
-                    isDark: isDark,
                   ),
                 ),
               ],
             ),
-          ],
+          ),
         ],
       ),
     );
@@ -244,14 +255,10 @@ class PeriodSummaryBar extends StatelessWidget {
 class _StatCol extends StatelessWidget {
   final String label;
   final String value;
-  final Color color;
-  final bool isDark;
 
   const _StatCol({
     required this.label,
     required this.value,
-    required this.color,
-    required this.isDark,
   });
 
   @override
@@ -264,9 +271,7 @@ class _StatCol extends StatelessWidget {
             fontSize: 10,
             fontWeight: FontWeight.w700,
             letterSpacing: 0.5,
-            color: isDark
-                ? AppColors.darkTextSecondary
-                : AppColors.lightTextSecondary,
+            color: Colors.white.withValues(alpha: 0.8),
           ),
         ),
         const SizedBox(height: 3),
@@ -274,8 +279,8 @@ class _StatCol extends StatelessWidget {
           value,
           style: GoogleFonts.plusJakartaSans(
             fontSize: 13,
-            fontWeight: FontWeight.w700,
-            color: color,
+            fontWeight: FontWeight.w800,
+            color: Colors.white,
           ),
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
@@ -288,8 +293,6 @@ class _StatCol extends StatelessWidget {
 Future<void> showDisplayOptionsDialog(BuildContext context) async {
   final settings = context.read<SettingsProvider>();
   String viewMode = settings.filterPeriod;
-  bool showTotal = settings.showTotal;
-  bool carryOver = settings.carryOver;
 
   const modes = [
     ('daily', 'DAILY'),
@@ -314,54 +317,16 @@ Future<void> showDisplayOptionsDialog(BuildContext context) async {
           ),
         ),
         content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _OptionRow(
-                label: 'View mode:',
-                children: modes.map((m) {
-                  final selected = viewMode == m.$1;
-                  return _CheckChoice(
-                    text: m.$2,
-                    selected: selected,
-                    onTap: () => setS(() => viewMode = m.$1),
-                  );
-                }).toList(),
-              ),
-              const SizedBox(height: 16),
-              _OptionRow(
-                label: 'Show total:',
-                children: [
-                  _CheckChoice(
-                    text: 'YES',
-                    selected: showTotal,
-                    onTap: () => setS(() => showTotal = true),
-                  ),
-                  _CheckChoice(
-                    text: 'NO',
-                    selected: !showTotal,
-                    onTap: () => setS(() => showTotal = false),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              _OptionRow(
-                label: 'Carry over:',
-                children: [
-                  _CheckChoice(
-                    text: 'ON',
-                    selected: carryOver,
-                    onTap: () => setS(() => carryOver = true),
-                  ),
-                  _CheckChoice(
-                    text: 'OFF',
-                    selected: !carryOver,
-                    onTap: () => setS(() => carryOver = false),
-                  ),
-                ],
-              ),
-            ],
+          child: _OptionRow(
+            label: 'View mode:',
+            children: modes.map((m) {
+              final selected = viewMode == m.$1;
+              return _CheckChoice(
+                text: m.$2,
+                selected: selected,
+                onTap: () => setS(() => viewMode = m.$1),
+              );
+            }).toList(),
           ),
         ),
         actions: [
@@ -371,11 +336,7 @@ Future<void> showDisplayOptionsDialog(BuildContext context) async {
           ),
           ElevatedButton(
             onPressed: () async {
-              await settings.setDisplayOptions(
-                viewMode: viewMode,
-                showTotal: showTotal,
-                carryOver: carryOver,
-              );
+              await settings.setDisplayOptions(viewMode: viewMode);
               if (ctx.mounted) Navigator.pop(ctx);
             },
             style: ElevatedButton.styleFrom(

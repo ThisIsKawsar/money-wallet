@@ -11,25 +11,25 @@ class MainShell extends StatelessWidget {
   const MainShell({super.key, required this.child});
 
   int _locationToIndex(String location) {
+    if (location.startsWith('/records')) return 0;
     if (location.startsWith('/analytics')) return 1;
-    if (location.startsWith('/budgets')) return 2;
-    if (location.startsWith('/accounts')) return 3;
-    if (location.startsWith('/categories')) return 4;
-    return 0;
+    if (location.startsWith('/budgets')) return 3;
+    if (location.startsWith('/accounts')) return 4;
+    return 2; // Home ('/') is center tab
   }
 
   void _onTap(BuildContext context, int index) {
     switch (index) {
       case 0:
-        context.go('/');
+        context.go('/records');
       case 1:
         context.go('/analytics');
       case 2:
-        context.go('/budgets');
+        context.go('/');
       case 3:
-        context.go('/accounts');
+        context.go('/budgets');
       case 4:
-        context.go('/categories');
+        context.go('/accounts');
     }
   }
 
@@ -169,10 +169,19 @@ class _BottomNav extends StatelessWidget {
                 onTap: onTap,
               ),
               _NavItem(
+                icon: Icons.home_outlined,
+                activeIcon: Icons.home_rounded,
+                label: 'Home',
+                index: 2,
+                currentIndex: currentIndex,
+                isDark: isDark,
+                onTap: onTap,
+              ),
+              _NavItem(
                 icon: Icons.calculate_outlined,
                 activeIcon: Icons.calculate_rounded,
                 label: 'Budgets',
-                index: 2,
+                index: 3,
                 currentIndex: currentIndex,
                 isDark: isDark,
                 onTap: onTap,
@@ -181,15 +190,6 @@ class _BottomNav extends StatelessWidget {
                 icon: Icons.account_balance_wallet_outlined,
                 activeIcon: Icons.account_balance_wallet_rounded,
                 label: 'Accounts',
-                index: 3,
-                currentIndex: currentIndex,
-                isDark: isDark,
-                onTap: onTap,
-              ),
-              _NavItem(
-                icon: Icons.local_offer_outlined,
-                activeIcon: Icons.local_offer_rounded,
-                label: 'Categories',
                 index: 4,
                 currentIndex: currentIndex,
                 isDark: isDark,

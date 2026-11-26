@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:cashpilot/screens/dashboard/dashboard_screen.dart';
+import 'package:cashpilot/screens/home/home_screen.dart';
 import 'package:cashpilot/screens/transactions/transactions_screen.dart';
 import 'package:cashpilot/screens/add_transaction/add_transaction_screen.dart';
 import 'package:cashpilot/screens/accounts/accounts_screen.dart';
@@ -39,6 +40,11 @@ GoRouter createRouter({String initialLocation = '/'}) {
           GoRoute(
             path: '/',
             pageBuilder: (context, state) =>
+                const NoTransitionPage(child: HomeScreen()),
+          ),
+          GoRoute(
+            path: '/records',
+            pageBuilder: (context, state) =>
                 const NoTransitionPage(child: DashboardScreen()),
           ),
           GoRoute(
@@ -56,12 +62,12 @@ GoRouter createRouter({String initialLocation = '/'}) {
             pageBuilder: (context, state) =>
                 const NoTransitionPage(child: AccountsScreen()),
           ),
-          GoRoute(
-            path: '/categories',
-            pageBuilder: (context, state) =>
-                const NoTransitionPage(child: CategoryManagementScreen()),
-          ),
         ],
+      ),
+      GoRoute(
+        path: '/categories',
+        parentNavigatorKey: _rootNavKey,
+        builder: (context, state) => const CategoryManagementScreen(),
       ),
       GoRoute(
         path: '/settings',

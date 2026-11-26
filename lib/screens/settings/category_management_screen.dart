@@ -29,58 +29,76 @@ class _CategoryManagementScreenState extends State<CategoryManagementScreen> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final catProvider = context.watch<CategoryProvider>();
 
-    return WavyBackground(
-      child: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                'Income categories',
-                style: GoogleFonts.plusJakartaSans(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.primary,
-                ),
-              ),
-              TextButton.icon(
-                onPressed: () => _showAddCategory(context, catProvider),
-                icon: const Icon(Icons.add_rounded, size: 18),
-                label: const Text('Add Category'),
-              ),
-            ],
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(
+          'Categories',
+          style: GoogleFonts.plusJakartaSans(
+            fontSize: 18,
+            fontWeight: FontWeight.w700,
+            color: isDark ? Colors.white : AppColors.lightTextPrimary,
           ),
-          Divider(
-            color: AppColors.primary.withValues(alpha: 0.25),
-            height: 10,
+        ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.add_rounded),
+            onPressed: () => _showAddCategory(context, catProvider),
           ),
-          const SizedBox(height: 6),
-          ...catProvider.incomeCategories.map((c) => _CategoryRow(
-                category: c,
-                isDark: isDark,
-                onDelete: () => catProvider.deleteCategory(c.id),
-              )),
-
-          const SizedBox(height: 18),
-          Text(
-            'Expense categories',
-            style: GoogleFonts.plusJakartaSans(
-              fontSize: 15,
-              fontWeight: FontWeight.w700,
-              color: AppColors.primary,
-            ),
-          ),
-          Divider(
-            color: AppColors.primary.withValues(alpha: 0.25),
-            height: 16,
-          ),
-          ...catProvider.expenseCategories.map((c) => _CategoryRow(
-                category: c,
-                isDark: isDark,
-                onDelete: () => catProvider.deleteCategory(c.id),
-              )),
         ],
+      ),
+      body: WavyBackground(
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 40),
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Income categories',
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.primary,
+                  ),
+                ),
+                TextButton.icon(
+                  onPressed: () => _showAddCategory(context, catProvider),
+                  icon: const Icon(Icons.add_rounded, size: 18),
+                  label: const Text('Add Category'),
+                ),
+              ],
+            ),
+            Divider(
+              color: AppColors.primary.withValues(alpha: 0.25),
+              height: 10,
+            ),
+            const SizedBox(height: 6),
+            ...catProvider.incomeCategories.map((c) => _CategoryRow(
+                  category: c,
+                  isDark: isDark,
+                  onDelete: () => catProvider.deleteCategory(c.id),
+                )),
+
+            const SizedBox(height: 18),
+            Text(
+              'Expense categories',
+              style: GoogleFonts.plusJakartaSans(
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+                color: AppColors.primary,
+              ),
+            ),
+            Divider(
+              color: AppColors.primary.withValues(alpha: 0.25),
+              height: 16,
+            ),
+            ...catProvider.expenseCategories.map((c) => _CategoryRow(
+                  category: c,
+                  isDark: isDark,
+                  onDelete: () => catProvider.deleteCategory(c.id),
+                )),
+          ],
+        ),
       ),
     );
   }

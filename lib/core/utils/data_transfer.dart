@@ -31,7 +31,7 @@ class ImportResult {
 class DataTransfer {
   static const _uuid = Uuid();
   static const _backupTables = ['accounts', 'categories', 'transactions', 'budgets', 'goals'];
-  static const _csvHeader = ['Date', 'Time', 'Type', 'Category', 'Account', 'To Account', 'Amount', 'Note'];
+  static const _csvHeader = ['TIME', 'TYPE', 'AMOUNT', 'CATEGORY', 'ACCOUNT', 'NOTES'];
 
   // ── Reload ───────────────────────────────────────────────────────────────
 
@@ -52,8 +52,18 @@ class DataTransfer {
 
   // ── Export ───────────────────────────────────────────────────────────────
 
-  static String _csvCell(String v) =>
-      v.contains(RegExp(r'[",\n\r]')) ? '"${v.replaceAll('"', '""')}"' : v;
+  static String _quotedCell(String v) => '"${v.replaceAll('"', '""')}"';
+
+  static String _exportTypeLabel(TransactionType type) {
+    switch (type) {
+      case TransactionType.income:
+        return '(+) Income';
+      case TransactionType.expense:
+        return '(-) Expense';
+      case TransactionType.transfer:
+        return '(*) Transfer';
+    }
+  }
 
   static String buildCsv(
     List<TransactionModel> txs,
@@ -62,20 +72,26 @@ class DataTransfer {
   ) {
     final accName = {for (final a in accounts) a.id: a.name};
     final catName = {for (final c in categories) c.id: c.name};
-    final rows = [..._csvHeader.map(_csvCell)].join(',');
-    final b = StringBuffer()..writeln(rows);
+    final b = StringBuffer()..writeln(_csvHeader.map(_quotedCell).join(','));
     final sorted = [...txs]..sort((a, c) => a.date.compareTo(c.date));
+    final timeFmt = DateFormat('MMM dd, yyyy h:mm a', 'en_US');
     for (final t in sorted) {
+      final fromAcc = accName[t.accountId] ?? '';
+      final toAcc = t.toAccountId != null ? (accName[t.toAccountId] ?? '') : '';
+      final accountCol = t.type == TransactionType.transfer && toAcc.isNotEmpty
+          ? '$fromAcc->$toAcc'
+          : fromAcc;
+      final categoryCol = t.type == TransactionType.transfer
+          ? '  -  '
+          : (catName[t.categoryId] ?? '');
       b.writeln([
-        DateFormat('yyyy-MM-dd').format(t.date),
-        DateFormat('HH:mm').format(t.date),
-        t.type.name,
-        t.type == TransactionType.transfer ? 'Transfer' : (catName[t.categoryId] ?? ''),
-        accName[t.accountId] ?? '',
-        t.toAccountId == null ? '' : (accName[t.toAccountId] ?? ''),
+        timeFmt.format(t.date),
+        _exportTypeLabel(t.type),
         t.amount.toStringAsFixed(2),
+        categoryCol,
+        accountCol,
         t.note ?? '',
-      ].map(_csvCell).join(','));
+      ].map(_quotedCell).join(','));
     }
     return b.toString();
   }
@@ -193,6 +209,40 @@ class DataTransfer {
     return rows;
   }
 
+  static TransactionType? _parseType(String raw) {
+    final lower = raw.toLowerCase();
+    if (lower.contains('income')) return TransactionType.income;
+    if (lower.contains('expense')) return TransactionType.expense;
+    if (lower.contains('transfer')) return TransactionType.transfer;
+    return null;
+  }
+
+  static DateTime? _parseDateTime(String rawTime, String rawDate) {
+    final t = rawTime.trim();
+    if (rawDate.isEmpty && t.isNotEmpty) {
+      for (final pattern in [
+        'MMM dd, yyyy h:mm a',
+        'MMM d, yyyy h:mm a',
+        'MMM dd, yyyy hh:mm a',
+        'yyyy-MM-dd HH:mm',
+        'yyyy-MM-dd',
+      ]) {
+        try {
+          return DateFormat(pattern, 'en_US').parse(t);
+        } catch (_) {}
+      }
+      return DateTime.tryParse(t);
+    }
+    final d = DateTime.tryParse(rawDate.trim());
+    if (d == null) return null;
+    final parts = t.split(':');
+    if (parts.length == 2) {
+      return DateTime(d.year, d.month, d.day, int.tryParse(parts[0]) ?? 0,
+          int.tryParse(parts[1]) ?? 0);
+    }
+    return d;
+  }
+
   static Future<ImportResult> _importCsv(String text) async {
     final rows = _parseCsv(text);
     if (rows.length < 2) throw const FormatException('The CSV file has no rows');
@@ -200,9 +250,11 @@ class DataTransfer {
     int col(String name) => header.indexOf(name);
     final iDate = col('date'), iTime = col('time'), iType = col('type'), iCat = col('category');
     final iAcc = col('account'), iTo = col('to account'), iAmt = col('amount');
-    final iNote = col('note') >= 0 ? col('note') : col('description');
-    if (iDate < 0 || iType < 0 || iAmt < 0) {
-      throw const FormatException('CSV needs at least Date, Type and Amount columns');
+    final iNote = col('notes') >= 0
+        ? col('notes')
+        : (col('note') >= 0 ? col('note') : col('description'));
+    if ((iDate < 0 && iTime < 0) || iType < 0 || iAmt < 0) {
+      throw const FormatException('CSV needs TIME/DATE, TYPE and AMOUNT columns');
     }
 
     final db = await DatabaseHelper.instance.database;
@@ -211,7 +263,7 @@ class DataTransfer {
     final existing = (await db.query('transactions')).map(TransactionModel.fromMap).toList();
     final seen = {
       for (final t in existing)
-        '${DateFormat('yyyy-MM-dd').format(t.date)}|${t.type.name}|${t.amount.toStringAsFixed(2)}|${t.note ?? ''}'
+        '${DateFormat('yyyy-MM-dd HH:mm').format(t.date)}|${t.type.name}|${t.amount.toStringAsFixed(2)}|${t.note ?? ''}'
     };
     final balanceDelta = <String, double>{};
     var added = 0, skipped = 0;
@@ -223,7 +275,7 @@ class DataTransfer {
       final match = accounts.where((a) => a.name.toLowerCase() == n.toLowerCase());
       if (match.isNotEmpty) return match.first.id;
       final a = AccountModel(
-          id: _uuid.v4(), name: n, type: AccountType.cash, icon: 'wallet', color: '#3B82F6', createdAt: DateTime.now());
+          id: _uuid.v4(), name: n, type: AccountType.cash, icon: 'wallet', color: '#10A352', createdAt: DateTime.now());
       await db.insert('accounts', a.toMap());
       accounts.add(a);
       return a.id;
@@ -247,31 +299,35 @@ class DataTransfer {
     }
 
     for (final r in rows.skip(1)) {
-      final typeName = cell(r, iType).toLowerCase();
-      final type = TransactionType.values.where((t) => t.name == typeName).firstOrNull;
+      final type = _parseType(cell(r, iType));
       final amount = double.tryParse(cell(r, iAmt).replaceAll(RegExp(r'[^0-9.\-]'), ''));
-      final date = DateTime.tryParse(cell(r, iDate));
-      if (type == null || amount == null || amount <= 0 || date == null) {
+      final when = _parseDateTime(cell(r, iTime), cell(r, iDate));
+      if (type == null || amount == null || amount <= 0 || when == null) {
         skipped++;
         continue;
       }
-      final timeParts = cell(r, iTime).split(':');
-      final when = timeParts.length == 2
-          ? DateTime(date.year, date.month, date.day, int.tryParse(timeParts[0]) ?? 0, int.tryParse(timeParts[1]) ?? 0)
-          : date;
-      final note = cell(r, iNote).isEmpty ? null : cell(r, iNote);
-      final key = '${DateFormat('yyyy-MM-dd').format(when)}|${type.name}|${amount.toStringAsFixed(2)}|${note ?? ''}';
+      final rawNote = iNote >= 0 && iNote < r.length ? r[iNote].trim() : '';
+      final note = rawNote.isEmpty ? null : rawNote;
+      final key = '${DateFormat('yyyy-MM-dd HH:mm').format(when)}|${type.name}|${amount.toStringAsFixed(2)}|${note ?? ''}';
       if (seen.contains(key)) {
         skipped++;
         continue;
       }
       seen.add(key);
 
-      final from = await accountId(cell(r, iAcc));
+      final accRaw = cell(r, iAcc);
+      String fromName = accRaw;
+      String toName = cell(r, iTo);
+      if (type == TransactionType.transfer && accRaw.contains('->')) {
+        final parts = accRaw.split('->');
+        fromName = parts[0].trim();
+        if (parts.length > 1) toName = parts[1].trim();
+      }
+
+      final from = await accountId(fromName);
       String? to;
       String catId;
       if (type == TransactionType.transfer) {
-        final toName = cell(r, iTo);
         if (toName.isEmpty) {
           skipped++;
           continue;

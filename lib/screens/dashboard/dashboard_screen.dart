@@ -71,16 +71,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         .where((t) => t.type == TransactionType.expense)
         .fold(0.0, (s, t) => s + t.amount);
 
-    double carryOverNet = 0.0;
-    if (settings.carryOver) {
-      for (final t in txProvider.transactions) {
-        if (t.date.isBefore(range.start)) {
-          if (t.type == TransactionType.income) carryOverNet += t.amount;
-          if (t.type == TransactionType.expense) carryOverNet -= t.amount;
-        }
-      }
-    }
-    final total = (income - expense) + carryOverNet;
+    final total = income - expense;
 
     // Group by Day: "Nov 25, Wednesday"
     final Map<String, List<TransactionModel>> dayGroups = {};

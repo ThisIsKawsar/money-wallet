@@ -70,16 +70,24 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
     return WavyBackground(
       child: Column(
         children: [
-          // Month Navigator + Total Budget / Total Spent Bar
+          // Month Navigator + Total Budget / Total Spent Green Card
           Container(
-            margin: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-            padding: const EdgeInsets.fromLTRB(10, 8, 10, 12),
+            margin: const EdgeInsets.fromLTRB(16, 4, 16, 10),
+            padding: const EdgeInsets.fromLTRB(14, 10, 14, 14),
             decoration: BoxDecoration(
-              color: isDark ? AppColors.darkCard : AppColors.lightSurface,
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(
-                color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
+              gradient: LinearGradient(
+                colors: AppColors.primaryGradient,
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
               ),
+              borderRadius: BorderRadius.circular(22),
+              boxShadow: [
+                BoxShadow(
+                  color: AppColors.primary.withValues(alpha: 0.25),
+                  blurRadius: 18,
+                  offset: const Offset(0, 8),
+                ),
+              ],
             ),
             child: Column(
               children: [
@@ -88,7 +96,7 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
                     IconButton(
                       onPressed: () => setState(() => _viewMonth =
                           DateTime(_viewMonth.year, _viewMonth.month - 1, 1)),
-                      icon: const Icon(Icons.chevron_left_rounded),
+                      icon: const Icon(Icons.chevron_left_rounded, color: Colors.white),
                       visualDensity: VisualDensity.compact,
                     ),
                     Expanded(
@@ -96,81 +104,82 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
                         DateFormat('MMMM, yyyy').format(_viewMonth),
                         textAlign: TextAlign.center,
                         style: GoogleFonts.plusJakartaSans(
-                          fontSize: 15,
+                          fontSize: 16,
                           fontWeight: FontWeight.w700,
-                          color: isDark ? Colors.white : AppColors.lightTextPrimary,
+                          color: Colors.white,
                         ),
                       ),
                     ),
                     IconButton(
                       onPressed: () => setState(() => _viewMonth =
                           DateTime(_viewMonth.year, _viewMonth.month + 1, 1)),
-                      icon: const Icon(Icons.chevron_right_rounded),
+                      icon: const Icon(Icons.chevron_right_rounded, color: Colors.white),
                       visualDensity: VisualDensity.compact,
                     ),
                   ],
                 ),
-                const SizedBox(height: 6),
-                Divider(
-                  height: 1,
-                  color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
-                ),
-                const SizedBox(height: 10),
-                Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        children: [
-                          Text(
-                            'TOTAL BUDGET',
-                            style: GoogleFonts.plusJakartaSans(
-                              fontSize: 10,
-                              fontWeight: FontWeight.w700,
-                              color: isDark
-                                  ? AppColors.darkTextSecondary
-                                  : AppColors.lightTextSecondary,
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.16),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          children: [
+                            Text(
+                              'TOTAL BUDGET',
+                              style: GoogleFonts.plusJakartaSans(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w700,
+                                color: Colors.white.withValues(alpha: 0.8),
+                              ),
                             ),
-                          ),
-                          const SizedBox(height: 3),
-                          Text(
-                            '${settings.currencySymbol}${fmt.format(totalBudget)}',
-                            style: GoogleFonts.plusJakartaSans(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w700,
-                              color: AppColors.primary,
+                            const SizedBox(height: 3),
+                            Text(
+                              '${settings.currencySymbol}${fmt.format(totalBudget)}',
+                              style: GoogleFonts.plusJakartaSans(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w800,
+                                color: Colors.white,
+                              ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
-                    ),
-                    Expanded(
-                      child: Column(
-                        children: [
-                          Text(
-                            'TOTAL SPENT',
-                            style: GoogleFonts.plusJakartaSans(
-                              fontSize: 10,
-                              fontWeight: FontWeight.w700,
-                              color: isDark
-                                  ? AppColors.darkTextSecondary
-                                  : AppColors.lightTextSecondary,
-                            ),
-                          ),
-                          const SizedBox(height: 3),
-                          Text(
-                            '${settings.currencySymbol}${fmt.format(totalSpent)}',
-                            style: GoogleFonts.plusJakartaSans(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w700,
-                              color: totalSpent > totalBudget
-                                  ? AppColors.expense
-                                  : AppColors.income,
-                            ),
-                          ),
-                        ],
+                      Container(
+                        width: 1,
+                        height: 28,
+                        color: Colors.white.withValues(alpha: 0.24),
                       ),
-                    ),
-                  ],
+                      Expanded(
+                        child: Column(
+                          children: [
+                            Text(
+                              'TOTAL SPENT',
+                              style: GoogleFonts.plusJakartaSans(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w700,
+                                color: Colors.white.withValues(alpha: 0.8),
+                              ),
+                            ),
+                            const SizedBox(height: 3),
+                            Text(
+                              '${settings.currencySymbol}${fmt.format(totalSpent)}',
+                              style: GoogleFonts.plusJakartaSans(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w800,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ],
             ),
