@@ -65,6 +65,19 @@ class _HomeScreenState extends State<HomeScreen> {
     final totalExpense = rangeTxs
         .where((t) => t.type == TransactionType.expense)
         .fold(0.0, (s, t) => s + t.amount);
+    final periodBalance = totalIncome - totalExpense;
+    final periodLabel = PeriodHelpers.label(anchor, mode);
+
+    // Same totals for the previous period, for the trend badges.
+    final prevRange = PeriodHelpers.range(PeriodHelpers.prev(anchor, mode), mode);
+    double prevSum(TransactionType type) => txProvider.transactions
+        .where((t) =>
+            t.type == type &&
+            !t.date.isBefore(prevRange.start) &&
+            t.date.isBefore(prevRange.end))
+        .fold(0.0, (s, t) => s + t.amount);
+    final incomeTrend = _Trend.of(totalIncome, prevSum(TransactionType.income));
+    final expenseTrend = _Trend.of(totalExpense, prevSum(TransactionType.expense));
 
     // Build chart buckets based on View mode from Display options
     final List<String> bucketLabels = [];
@@ -208,7 +221,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
             // ── Green Total Balance Card ─────────────────────────────────
             _HomeBalanceCard(
-              totalBalance: accProvider.totalBalance,
+              totalBalance: periodBalance,
+              accountsBalance: accProvider.totalBalance,
+              periodLabel: periodLabel,
               totalIncome: totalIncome,
               totalExpense: totalExpense,
               currencySymbol: settings.currencySymbol,
@@ -237,7 +252,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   child: _MiniStatCard(
                     label: 'Income',
                     amount: '${settings.currencySymbol}${fmt.format(totalIncome)}',
-                    trend: '+12%',
+                    trend: incomeTrend,
                     isIncome: true,
                     isDark: isDark,
                   ),
@@ -247,7 +262,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   child: _MiniStatCard(
                     label: 'Expense',
                     amount: '${settings.currencySymbol}${fmt.format(totalExpense)}',
-                    trend: '+8%',
+                    trend: expenseTrend,
                     isIncome: false,
                     isDark: isDark,
                   ),
@@ -381,7 +396,12 @@ class _HomeScreenState extends State<HomeScreen> {
 }
 
 class _HomeBalanceCard extends StatelessWidget {
+  /// Balance of the selected period (income − expense).
   final double totalBalance;
+
+  /// Current sum of all account balances (not period-filtered).
+  final double accountsBalance;
+  final String periodLabel;
   final double totalIncome;
   final double totalExpense;
   final String currencySymbol;
@@ -391,6 +411,8 @@ class _HomeBalanceCard extends StatelessWidget {
 
   const _HomeBalanceCard({
     required this.totalBalance,
+    required this.accountsBalance,
+    required this.periodLabel,
     required this.totalIncome,
     required this.totalExpense,
     required this.currencySymbol,
@@ -455,7 +477,9 @@ class _HomeBalanceCard extends StatelessWidget {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text(
-                      'Total Balance',
+                      'Total Balance · $periodLabel',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: GoogleFonts.plusJakartaSans(
                         fontSize: 13,
                         fontWeight: FontWeight.w500,
@@ -497,36 +521,53 @@ class _HomeBalanceCard extends StatelessWidget {
                         ),
                       ],
                     ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.22),
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            isPositiveTrend
-                                ? Icons.arrow_upward_rounded
-                                : Icons.arrow_downward_rounded,
-                            color: Colors.white,
-                            size: 13,
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 4,
                           ),
-                          const SizedBox(width: 3),
-                          Text(
-                            _trendLabel(),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.22),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                isPositiveTrend
+                                    ? Icons.arrow_upward_rounded
+                                    : Icons.arrow_downward_rounded,
+                                color: Colors.white,
+                                size: 13,
+                              ),
+                              const SizedBox(width: 3),
+                              Text(
+                                _trendLabel(),
+                                style: GoogleFonts.plusJakartaSans(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Flexible(
+                          child: Text(
+                            'Accounts ${isHidden ? '$currencySymbol••••' : _formatAmount(accountsBalance)}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                             style: GoogleFonts.plusJakartaSans(
                               fontSize: 12,
                               fontWeight: FontWeight.w600,
-                              color: Colors.white,
+                              color: Colors.white.withValues(alpha: 0.85),
                             ),
                           ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
@@ -680,10 +721,27 @@ class _HomeQuickActions extends StatelessWidget {
   }
 }
 
+/// Change of a period total vs the previous period.
+class _Trend {
+  final String text;
+  final bool up;
+  const _Trend(this.text, this.up);
+
+  factory _Trend.of(double current, double previous) {
+    if (previous <= 0) {
+      return current > 0 ? const _Trend('New', true) : const _Trend('0%', true);
+    }
+    final pct = (current - previous) / previous * 100;
+    final up = pct >= 0;
+    final abs = pct.abs();
+    return _Trend('${abs >= 100 ? abs.toStringAsFixed(0) : abs.toStringAsFixed(1)}%', up);
+  }
+}
+
 class _MiniStatCard extends StatelessWidget {
   final String label;
   final String amount;
-  final String trend;
+  final _Trend trend;
   final bool isIncome;
   final bool isDark;
 
@@ -753,11 +811,14 @@ class _MiniStatCard extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           Text(
-            '↑ $trend',
+            '${trend.up ? '↑' : '↓'} ${trend.text} vs prev.',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
             style: GoogleFonts.plusJakartaSans(
               fontSize: 12,
               fontWeight: FontWeight.w600,
-              color: isIncome ? AppColors.lightTextPrimary : color,
+              // More income or less expense is good (green), otherwise red.
+              color: trend.up == isIncome ? AppColors.income : AppColors.expense,
             ),
           ),
         ],
