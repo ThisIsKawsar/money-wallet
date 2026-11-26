@@ -1,17 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:cashpilot/core/theme/app_colors.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:cashpilot/core/theme/app_colors.dart';
+import 'package:cashpilot/core/constants/app_constants.dart';
+import 'package:cashpilot/widgets/app_drawer.dart';
+import 'package:cashpilot/widgets/cashpilot_logo.dart';
 
 class MainShell extends StatelessWidget {
   final Widget child;
   const MainShell({super.key, required this.child});
 
   int _locationToIndex(String location) {
-    if (location.startsWith('/transactions')) return 1;
-    if (location.startsWith('/analytics')) return 2;
-    if (location.startsWith('/budgets')) return 3;
-    if (location.startsWith('/settings')) return 4;
+    if (location.startsWith('/analytics')) return 1;
+    if (location.startsWith('/budgets')) return 2;
+    if (location.startsWith('/accounts')) return 3;
+    if (location.startsWith('/categories')) return 4;
     return 0;
   }
 
@@ -20,13 +23,13 @@ class MainShell extends StatelessWidget {
       case 0:
         context.go('/');
       case 1:
-        context.go('/transactions');
-      case 2:
         context.go('/analytics');
-      case 3:
+      case 2:
         context.go('/budgets');
+      case 3:
+        context.go('/accounts');
       case 4:
-        context.go('/settings');
+        context.go('/categories');
     }
   }
 
@@ -37,15 +40,68 @@ class MainShell extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
-      body: child,
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => context.push('/add-transaction'),
-        backgroundColor: AppColors.primary,
-        elevation: 6,
-        shape: const CircleBorder(),
-        child: const Icon(Icons.add, color: Colors.white, size: 28),
+      drawer: const AppDrawer(),
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        leading: Builder(
+          builder: (ctx) => IconButton(
+            icon: const Icon(Icons.menu_rounded, size: 24),
+            onPressed: () => Scaffold.of(ctx).openDrawer(),
+          ),
+        ),
+        centerTitle: false,
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const CashPilotLogo(size: 24),
+            const SizedBox(width: 8),
+            Text(
+              AppConstants.appName,
+              style: GoogleFonts.plusJakartaSans(
+                fontSize: 19,
+                fontWeight: FontWeight.w800,
+                color: isDark ? Colors.white : AppColors.lightTextPrimary,
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.search_rounded, size: 24),
+            onPressed: () => context.push('/transactions'),
+            tooltip: 'Search records',
+          ),
+        ],
       ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
+      body: child,
+      floatingActionButton: Container(
+        width: 54,
+        height: 54,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: AppColors.primaryGradient,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: AppColors.primary.withValues(alpha: 0.35),
+              blurRadius: 14,
+              offset: const Offset(0, 6),
+            ),
+          ],
+        ),
+        child: FloatingActionButton(
+          onPressed: () => context.push('/add-transaction'),
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          highlightElevation: 0,
+          shape: const CircleBorder(),
+          child: const Icon(Icons.add_rounded, color: Colors.white, size: 28),
+        ),
+      ),
       bottomNavigationBar: _BottomNav(
         currentIndex: currentIndex,
         isDark: isDark,
@@ -68,22 +124,79 @@ class _BottomNav extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return BottomAppBar(
-      color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
-      elevation: 0,
-      notchMargin: 8,
-      shape: const CircularNotchedRectangle(),
-      child: SizedBox(
-        height: 60,
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
-          children: [
-            _NavItem(icon: Icons.home_rounded, label: 'Home', index: 0, currentIndex: currentIndex, isDark: isDark, onTap: onTap),
-            _NavItem(icon: Icons.receipt_long_rounded, label: 'Transactions', index: 1, currentIndex: currentIndex, isDark: isDark, onTap: onTap),
-            const SizedBox(width: 56),
-            _NavItem(icon: Icons.bar_chart_rounded, label: 'Analytics', index: 2, currentIndex: currentIndex, isDark: isDark, onTap: onTap),
-            _NavItem(icon: Icons.pie_chart_rounded, label: 'Budgets', index: 3, currentIndex: currentIndex, isDark: isDark, onTap: onTap),
-          ],
+    return Container(
+      decoration: BoxDecoration(
+        color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
+        border: Border(
+          top: BorderSide(
+            color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
+            width: 0.8,
+          ),
+        ),
+        boxShadow: isDark
+            ? []
+            : [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.04),
+                  blurRadius: 14,
+                  offset: const Offset(0, -3),
+                ),
+              ],
+      ),
+      child: SafeArea(
+        top: false,
+        child: SizedBox(
+          height: 62,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              _NavItem(
+                icon: Icons.receipt_long_outlined,
+                activeIcon: Icons.receipt_long_rounded,
+                label: 'Records',
+                index: 0,
+                currentIndex: currentIndex,
+                isDark: isDark,
+                onTap: onTap,
+              ),
+              _NavItem(
+                icon: Icons.pie_chart_outline_rounded,
+                activeIcon: Icons.pie_chart_rounded,
+                label: 'Analysis',
+                index: 1,
+                currentIndex: currentIndex,
+                isDark: isDark,
+                onTap: onTap,
+              ),
+              _NavItem(
+                icon: Icons.calculate_outlined,
+                activeIcon: Icons.calculate_rounded,
+                label: 'Budgets',
+                index: 2,
+                currentIndex: currentIndex,
+                isDark: isDark,
+                onTap: onTap,
+              ),
+              _NavItem(
+                icon: Icons.account_balance_wallet_outlined,
+                activeIcon: Icons.account_balance_wallet_rounded,
+                label: 'Accounts',
+                index: 3,
+                currentIndex: currentIndex,
+                isDark: isDark,
+                onTap: onTap,
+              ),
+              _NavItem(
+                icon: Icons.local_offer_outlined,
+                activeIcon: Icons.local_offer_rounded,
+                label: 'Categories',
+                index: 4,
+                currentIndex: currentIndex,
+                isDark: isDark,
+                onTap: onTap,
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -92,6 +205,7 @@ class _BottomNav extends StatelessWidget {
 
 class _NavItem extends StatelessWidget {
   final IconData icon;
+  final IconData activeIcon;
   final String label;
   final int index;
   final int currentIndex;
@@ -100,6 +214,7 @@ class _NavItem extends StatelessWidget {
 
   const _NavItem({
     required this.icon,
+    required this.activeIcon,
     required this.label,
     required this.index,
     required this.currentIndex,
@@ -114,23 +229,23 @@ class _NavItem extends StatelessWidget {
         ? AppColors.primary
         : isDark
             ? AppColors.darkTextTertiary
-            : AppColors.lightTextTertiary;
+            : AppColors.lightTextSecondary;
 
     return InkWell(
       onTap: () => onTap(index),
       borderRadius: BorderRadius.circular(12),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, color: color, size: 22),
-            const SizedBox(height: 2),
+            Icon(isSelected ? activeIcon : icon, color: color, size: 22),
+            const SizedBox(height: 3),
             Text(
               label,
-              style: GoogleFonts.inter(
-                fontSize: 10,
-                fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
+              style: GoogleFonts.plusJakartaSans(
+                fontSize: 10.5,
+                fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
                 color: color,
               ),
             ),

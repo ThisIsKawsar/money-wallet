@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
-import 'package:go_router/go_router.dart';
-import 'package:google_fonts/google_fonts.dart';
+import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
 import 'package:cashpilot/providers/transaction_provider.dart';
 import 'package:cashpilot/providers/account_provider.dart';
@@ -12,7 +12,9 @@ import 'package:cashpilot/data/models/account_model.dart';
 import 'package:cashpilot/data/models/category_model.dart';
 import 'package:cashpilot/core/theme/app_colors.dart';
 import 'package:cashpilot/core/constants/app_icons.dart';
-import 'package:cashpilot/widgets/category_icon.dart';
+import 'package:cashpilot/widgets/wavy_background.dart';
+import 'package:cashpilot/widgets/ui_kit.dart';
+import 'package:cashpilot/widgets/account_picker.dart';
 
 const _uuid = Uuid();
 
@@ -20,600 +22,419 @@ class AddTransactionScreen extends StatefulWidget {
   final String? initialType;
   final TransactionModel? transaction;
 
-  const AddTransactionScreen({
-    super.key,
-    this.initialType,
-    this.transaction,
-  });
+  const AddTransactionScreen({super.key, this.initialType, this.transaction});
 
   @override
   State<AddTransactionScreen> createState() => _AddTransactionScreenState();
 }
 
-class _AddTransactionScreenState extends State<AddTransactionScreen>
-    with SingleTickerProviderStateMixin {
-  late TabController _tabController;
-  final _amountController = TextEditingController();
-  final _noteController = TextEditingController();
-  DateTime _selectedDate = DateTime.now();
-  CategoryModel? _selectedCategory;
-  AccountModel? _selectedAccount;
-  AccountModel? _selectedToAccount;
-  bool _isEditing = false;
+class _AddTransactionScreenState extends State<AddTransactionScreen> {
+  static const _types = [TransactionType.income, TransactionType.expense, TransactionType.transfer];
+
+  late int _typeIndex;
+  final _amountCtrl = TextEditingController();
+  final _noteCtrl = TextEditingController();
+  DateTime _date = DateTime.now();
+  CategoryModel? _category;
+  AccountModel? _account;
+  AccountModel? _toAccount;
+  bool _showAll = false;
+  bool _saving = false;
+
+  bool get _isEditing => widget.transaction != null;
+  TransactionType get _type => _types[_typeIndex];
 
   @override
   void initState() {
     super.initState();
-    final initialIndex = widget.initialType == 'income'
-        ? 0
-        : widget.initialType == 'expense'
-            ? 1
-            : widget.transaction != null
-                ? _typeToIndex(widget.transaction!.type)
-                : 1;
-    _tabController = TabController(length: 3, vsync: this, initialIndex: initialIndex);
-
-    if (widget.transaction != null) {
-      _isEditing = true;
-      final tx = widget.transaction!;
-      _amountController.text = tx.amount.toStringAsFixed(2);
-      _noteController.text = tx.note ?? '';
-      _selectedDate = tx.date;
+    final tx = widget.transaction;
+    _typeIndex = switch (widget.initialType) {
+      'income' => 0,
+      'expense' => 1,
+      'transfer' => 2,
+      _ => tx != null ? _types.indexOf(tx.type) : 1,
+    };
+    if (tx != null) {
+      _amountCtrl.text = tx.amount.toStringAsFixed(2);
+      _noteCtrl.text = tx.note ?? '';
+      _date = tx.date;
     }
-
-    WidgetsBinding.instance.addPostFrameCallback((_) => _initProviders());
+    WidgetsBinding.instance.addPostFrameCallback((_) => _init());
   }
 
-  int _typeToIndex(TransactionType type) {
-    switch (type) {
-      case TransactionType.income:
-        return 0;
-      case TransactionType.expense:
-        return 1;
-      case TransactionType.transfer:
-        return 2;
-    }
-  }
-
-  TransactionType _indexToType(int index) {
-    switch (index) {
-      case 0:
-        return TransactionType.income;
-      case 2:
-        return TransactionType.transfer;
-      default:
-        return TransactionType.expense;
-    }
-  }
-
-  Future<void> _initProviders() async {
+  Future<void> _init() async {
     final cats = context.read<CategoryProvider>();
     final accs = context.read<AccountProvider>();
     if (cats.categories.isEmpty) await cats.loadCategories();
     if (accs.accounts.isEmpty) await accs.loadAccounts();
+    if (!mounted) return;
+    setState(() {
+      final tx = widget.transaction;
+      if (tx != null) {
+        _category = cats.getCategoryById(tx.categoryId);
+        _account = accs.getAccountById(tx.accountId);
+        if (tx.toAccountId != null) _toAccount = accs.getAccountById(tx.toAccountId!);
+      } else {
+        if (accs.accounts.isNotEmpty) _account = accs.accounts.first;
+        if (accs.accounts.length > 1) _toAccount = accs.accounts[1];
+        _autoCategory(cats);
+      }
+    });
+  }
 
-    if (widget.transaction != null && mounted) {
-      final tx = widget.transaction!;
-      setState(() {
-        _selectedCategory = cats.getCategoryById(tx.categoryId);
-        _selectedAccount = accs.getAccountById(tx.accountId);
-        if (tx.toAccountId != null) {
-          _selectedToAccount = accs.getAccountById(tx.toAccountId!);
-        }
-      });
-    }
+  void _autoCategory(CategoryProvider cats) {
+    final list = _type == TransactionType.income ? cats.incomeCategories : cats.expenseCategories;
+    _category = list.isNotEmpty ? list.first : null;
   }
 
   @override
   void dispose() {
-    _tabController.dispose();
-    _amountController.dispose();
-    _noteController.dispose();
+    _amountCtrl.dispose();
+    _noteCtrl.dispose();
     super.dispose();
   }
 
   Future<void> _save() async {
-    final amount = double.tryParse(_amountController.text.replaceAll(',', ''));
-    if (amount == null || amount <= 0) {
-      _showError('Please enter a valid amount');
-      return;
+    final amount = double.tryParse(_amountCtrl.text.replaceAll(',', ''));
+    if (amount == null || amount <= 0) return showToast(context, 'Enter a valid amount', error: true);
+    if (_type != TransactionType.transfer && _category == null) {
+      return showToast(context, 'Choose a category', error: true);
+    }
+    if (_account == null) return showToast(context, 'Choose an account', error: true);
+    if (_type == TransactionType.transfer &&
+        (_toAccount == null || _toAccount!.id == _account!.id)) {
+      return showToast(context, 'Choose a different destination account', error: true);
     }
 
-    final type = _indexToType(_tabController.index);
-    if (type != TransactionType.transfer && _selectedCategory == null) {
-      _showError('Please select a category');
-      return;
-    }
-    if (_selectedAccount == null) {
-      _showError('Please select an account');
-      return;
-    }
-    if (type == TransactionType.transfer && _selectedToAccount == null) {
-      _showError('Please select destination account');
-      return;
-    }
+    setState(() => _saving = true);
+    HapticFeedback.lightImpact();
+    final txp = context.read<TransactionProvider>();
+    final accp = context.read<AccountProvider>();
+    final note = _noteCtrl.text.trim().isEmpty ? null : _noteCtrl.text.trim();
 
-    final txProvider = context.read<TransactionProvider>();
-    final accProvider = context.read<AccountProvider>();
-
-    if (_isEditing && widget.transaction != null) {
-      final updated = widget.transaction!.copyWith(
-        type: type,
+    if (_isEditing) {
+      final old = widget.transaction!;
+      // Revert the old effect, then apply the new one.
+      await accp.applyTransaction(old, revert: true);
+      final updated = old.copyWith(
+        type: _type,
         amount: amount,
-        categoryId: _selectedCategory?.id ?? '0',
-        accountId: _selectedAccount!.id,
-        toAccountId: _selectedToAccount?.id,
-        date: _selectedDate,
-        note: _noteController.text.trim().isEmpty
-            ? null
-            : _noteController.text.trim(),
+        categoryId: _type == TransactionType.transfer ? 'transfer' : _category!.id,
+        accountId: _account!.id,
+        toAccountId: _type == TransactionType.transfer ? _toAccount?.id : null,
+        date: _date,
+        note: note,
       );
-      await txProvider.updateTransaction(updated);
+      await txp.updateTransaction(updated);
+      await accp.applyTransaction(updated);
+    } else if (_type == TransactionType.transfer) {
+      await accp.transferBetweenAccounts(
+          fromId: _account!.id, toId: _toAccount!.id, amount: amount, note: note);
+      await txp.loadTransactions();
     } else {
-      if (type == TransactionType.transfer) {
-        await accProvider.transferBetweenAccounts(
-          fromId: _selectedAccount!.id,
-          toId: _selectedToAccount!.id,
-          amount: amount,
-          note: _noteController.text.trim().isEmpty
-              ? null
-              : _noteController.text.trim(),
-        );
-      } else {
-        final tx = TransactionModel(
-          id: _uuid.v4(),
-          type: type,
-          amount: amount,
-          categoryId: _selectedCategory!.id,
-          accountId: _selectedAccount!.id,
-          date: _selectedDate,
-          note: _noteController.text.trim().isEmpty
-              ? null
-              : _noteController.text.trim(),
-          createdAt: DateTime.now(),
-        );
-        await txProvider.addTransaction(tx);
-
-        // Update account balance
-        final acc = _selectedAccount!;
-        final delta = type == TransactionType.income ? amount : -amount;
-        final updated = acc.copyWith(balance: acc.balance + delta);
-        await accProvider.updateAccount(updated);
-      }
+      final tx = TransactionModel(
+        id: _uuid.v4(),
+        type: _type,
+        amount: amount,
+        categoryId: _category!.id,
+        accountId: _account!.id,
+        date: _date,
+        note: note,
+        createdAt: DateTime.now(),
+      );
+      await txp.addTransaction(tx);
+      await accp.applyTransaction(tx);
     }
 
-    if (context.mounted) context.pop();
+    if (!mounted) return;
+    showToast(context, _isEditing ? 'Transaction updated' : 'Transaction saved');
+    safeBack(context);
   }
 
-  void _showError(String msg) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(msg), backgroundColor: AppColors.expense),
+  Future<void> _delete() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete transaction?'),
+        content: const Text('The account balance will be adjusted.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Delete', style: TextStyle(color: AppColors.expense))),
+        ],
+      ),
     );
+    if (ok != true || !mounted) return;
+    final accp = context.read<AccountProvider>();
+    await accp.applyTransaction(widget.transaction!, revert: true);
+    if (!mounted) return;
+    await context.read<TransactionProvider>().deleteTransaction(widget.transaction!.id);
+    if (mounted) safeBack(context);
   }
 
   Future<void> _pickDate() async {
     final picked = await showDatePicker(
       context: context,
-      initialDate: _selectedDate,
+      initialDate: _date,
       firstDate: DateTime(2000),
       lastDate: DateTime.now().add(const Duration(days: 365)),
     );
-    if (picked != null) setState(() => _selectedDate = picked);
+    if (picked != null) {
+      setState(() => _date = DateTime(picked.year, picked.month, picked.day, _date.hour, _date.minute));
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     final settings = context.watch<SettingsProvider>();
-    final catProvider = context.watch<CategoryProvider>();
-    final accProvider = context.watch<AccountProvider>();
+    final catp = context.watch<CategoryProvider>();
+    final accounts = context.watch<AccountProvider>().accounts;
+    final cats = _type == TransactionType.income ? catp.incomeCategories : catp.expenseCategories;
+    final visible = _showAll ? cats : cats.take(3).toList();
+    final accent = switch (_type) {
+      TransactionType.income => AppColors.income,
+      TransactionType.expense => AppColors.expense,
+      TransactionType.transfer => AppColors.transfer,
+    };
+    final cta = _isEditing
+        ? 'Save Changes'
+        : ['Add Income', 'Add Expense', 'Transfer Now'][_typeIndex];
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text(
-          _isEditing ? 'Edit Transaction' : 'Add Transaction',
-          style: GoogleFonts.inter(
-              fontSize: 20,
-              fontWeight: FontWeight.w700,
-              color: isDark ? Colors.white : const Color(0xFF1a1a2e)),
-        ),
-        leading: IconButton(
-          icon: const Icon(Icons.close),
-          onPressed: () => context.pop(),
-        ),
-        bottom: TabBar(
-          controller: _tabController,
-          indicatorColor: AppColors.primary,
-          labelColor: AppColors.primary,
-          unselectedLabelColor: isDark
-              ? Colors.white.withValues(alpha: 0.5)
-              : Colors.black.withValues(alpha: 0.5),
-          labelStyle:
-              GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w600),
-          tabs: const [
-            Tab(text: 'Income'),
-            Tab(text: 'Expense'),
-            Tab(text: 'Transfer'),
-          ],
-          onTap: (_) => setState(() => _selectedCategory = null),
-        ),
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Amount input
-            _AmountField(
-              controller: _amountController,
-              symbol: settings.currencySymbol,
-              isDark: isDark,
-              onChanged: () => setState(() {}),
-            ),
-            const SizedBox(height: 24),
-
-            // Category (not for transfer)
-            AnimatedBuilder(
-              animation: _tabController,
-              builder: (context, _) {
-                if (_tabController.index == 2) return const SizedBox.shrink();
-                final isIncome = _tabController.index == 0;
-                final categories = isIncome
-                    ? catProvider.incomeCategories
-                    : catProvider.expenseCategories;
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+      body: WavyBackground(
+        child: SafeArea(
+          child: Column(
+            children: [
+              ScreenHeader(
+                title: _isEditing ? 'Edit Transaction' : 'Add Transaction',
+                                trailing: _isEditing
+                    ? IconButton(
+                        icon: const Icon(Icons.delete_outline_rounded, color: AppColors.expense),
+                        onPressed: _delete,
+                      )
+                    : null,
+              ),
+              Expanded(
+                child: ListView(
+                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
                   children: [
-                    _sectionLabel('Category', isDark),
-                    const SizedBox(height: 12),
-                    _CategoryGrid(
-                      categories: categories,
-                      selected: _selectedCategory,
-                      onSelect: (c) =>
-                          setState(() => _selectedCategory = c),
+                    PillTabs(
+                      labels: const ['Income', 'Expense', 'Transfer'],
+                      index: _typeIndex,
+                      onChanged: (i) => setState(() {
+                        _typeIndex = i;
+                        _showAll = false;
+                        _autoCategory(catp);
+                      }),
                     ),
-                    const SizedBox(height: 24),
-                  ],
-                );
-              },
-            ),
+                    const SizedBox(height: 20),
 
-            _sectionLabel('Account', isDark),
-            const SizedBox(height: 12),
-            _AccountSelector(
-              accounts: accProvider.accounts,
-              selected: _selectedAccount,
-              onSelect: (a) => setState(() => _selectedAccount = a),
-              isDark: isDark,
-            ),
-            const SizedBox(height: 24),
-
-            // To account (transfer only)
-            AnimatedBuilder(
-              animation: _tabController,
-              builder: (context, _) {
-                if (_tabController.index != 2) {
-                  return const SizedBox.shrink();
-                }
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _sectionLabel('To Account', isDark),
-                    const SizedBox(height: 12),
-                    _AccountSelector(
-                      accounts: accProvider.accounts
-                          .where((a) => a.id != _selectedAccount?.id)
-                          .toList(),
-                      selected: _selectedToAccount,
-                      onSelect: (a) =>
-                          setState(() => _selectedToAccount = a),
-                      isDark: isDark,
+                    // Amount
+                    SoftCard(
+                      padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('Amount', style: jakarta(12, weight: FontWeight.w600, color: context.textTertiary)),
+                          Row(
+                            children: [
+                              Text(settings.currencySymbol,
+                                  style: jakarta(32, weight: FontWeight.w800, color: accent)),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: TextField(
+                                  controller: _amountCtrl,
+                                  autofocus: !_isEditing,
+                                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                  inputFormatters: [
+                                    FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}')),
+                                  ],
+                                  style: jakarta(34, weight: FontWeight.w800, color: context.textPrimary),
+                                  decoration: InputDecoration(
+                                    hintText: '0.00',
+                                    hintStyle: jakarta(34, weight: FontWeight.w700, color: context.textTertiary),
+                                    border: InputBorder.none,
+                                    enabledBorder: InputBorder.none,
+                                    focusedBorder: InputBorder.none,
+                                    filled: false,
+                                    isDense: true,
+                                    contentPadding: const EdgeInsets.symmetric(vertical: 6),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
                     ),
-                    const SizedBox(height: 24),
-                  ],
-                );
-              },
-            ),
+                    const SizedBox(height: 22),
 
-            _sectionLabel('Date', isDark),
-            const SizedBox(height: 12),
-            GestureDetector(
-              onTap: _pickDate,
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 16, vertical: 14),
-                decoration: BoxDecoration(
-                  color: isDark
-                      ? AppColors.darkCardAlt
-                      : AppColors.lightCardAlt,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: isDark
-                        ? AppColors.darkBorder
-                        : AppColors.lightBorder,
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.calendar_today_rounded,
-                        size: 18, color: AppColors.primary),
-                    const SizedBox(width: 12),
-                    Text(
-                      '${_selectedDate.day}/${_selectedDate.month}/${_selectedDate.year}',
-                      style: GoogleFonts.inter(
-                        fontSize: 14,
-                        color: isDark
-                            ? Colors.white
-                            : const Color(0xFF1a1a2e),
+                    if (_type != TransactionType.transfer) ...[
+                      const FieldLabel('Category'),
+                      AnimatedSize(
+                        duration: const Duration(milliseconds: 250),
+                        curve: Curves.easeOut,
+                        alignment: Alignment.topCenter,
+                        child: GridView.count(
+                          crossAxisCount: 4,
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          mainAxisSpacing: 14,
+                          crossAxisSpacing: 8,
+                          childAspectRatio: 0.82,
+                          children: [
+                            for (final c in visible)
+                              _CategoryChoice(
+                                label: c.name,
+                                icon: AppIcons.fromName(c.icon),
+                                color: AppColors.fromHex(c.color),
+                                selected: _category?.id == c.id,
+                                onTap: () => setState(() => _category = c),
+                              ),
+                            if (cats.length > 3)
+                              _CategoryChoice(
+                                label: _showAll ? 'Less' : 'More',
+                                icon: _showAll ? Icons.expand_less_rounded : Icons.more_horiz_rounded,
+                                color: AppColors.transfer,
+                                selected: false,
+                                onTap: () => setState(() => _showAll = !_showAll),
+                              ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                    ],
+
+                    FieldLabel(_type == TransactionType.transfer ? 'From Account' : 'Account'),
+                    AccountPickerField(
+                      accounts: accounts,
+                      selected: _account,
+                      symbol: settings.currencySymbol,
+                      onChanged: (a) => setState(() => _account = a),
+                    ),
+                    if (_type == TransactionType.transfer) ...[
+                      const SizedBox(height: 16),
+                      const FieldLabel('To Account'),
+                      AccountPickerField(
+                        accounts: accounts.where((a) => a.id != _account?.id).toList(),
+                        selected: _toAccount,
+                        symbol: settings.currencySymbol,
+                        onChanged: (a) => setState(() => _toAccount = a),
+                      ),
+                    ],
+                    const SizedBox(height: 18),
+                    const FieldLabel('Description (Optional)'),
+                    AppTextField(
+                      controller: _noteCtrl,
+                      hint: _type == TransactionType.income
+                          ? 'e.g. Monthly Salary'
+                          : _type == TransactionType.expense
+                              ? 'e.g. Lunch with team'
+                              : 'e.g. For savings',
+                      icon: Icons.edit_note_rounded,
+                    ),
+                    const SizedBox(height: 18),
+                    const FieldLabel('Date'),
+                    FieldBox(
+                      onTap: _pickDate,
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
+                      child: Row(
+                        children: [
+                          Icon(Icons.calendar_today_outlined, size: 19, color: context.textSecondary),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(DateFormat('MMM d, yyyy').format(_date),
+                                style: jakarta(15, weight: FontWeight.w600, color: context.textPrimary)),
+                          ),
+                          for (final (label, days) in const [('Today', 0), ('Yesterday', 1)])
+                            Padding(
+                              padding: const EdgeInsets.only(left: 6),
+                              child: GestureDetector(
+                                onTap: () => setState(() {
+                                  final d = DateTime.now().subtract(Duration(days: days));
+                                  _date = DateTime(d.year, d.month, d.day, DateTime.now().hour, DateTime.now().minute);
+                                }),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.primary.withValues(alpha: 0.1),
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: Text(label,
+                                      style: jakarta(11, weight: FontWeight.w700, color: AppColors.primary)),
+                                ),
+                              ),
+                            ),
+                        ],
                       ),
                     ),
                   ],
                 ),
               ),
-            ),
-            const SizedBox(height: 24),
-
-            _sectionLabel('Note (optional)', isDark),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _noteController,
-              maxLines: 2,
-              style: GoogleFonts.inter(fontSize: 14),
-              decoration: const InputDecoration(
-                hintText: 'Add a note...',
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 6, 20, 14),
+                child: GradientButton(label: cta, loading: _saving, onPressed: _save),
               ),
-            ),
-            const SizedBox(height: 32),
-
-            SizedBox(
-              width: double.infinity,
-              height: 52,
-              child: ElevatedButton(
-                onPressed: _save,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.primary,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14)),
-                ),
-                child: Text(
-                  _isEditing ? 'Update' : 'Save Transaction',
-                  style: GoogleFonts.inter(
-                      fontSize: 16, fontWeight: FontWeight.w600),
-                ),
-              ),
-            ),
-            const SizedBox(height: 40),
-          ],
+            ],
+          ),
         ),
       ),
     );
   }
-
-  Widget _sectionLabel(String text, bool isDark) => Text(
-        text,
-        style: GoogleFonts.inter(
-          fontSize: 14,
-          fontWeight: FontWeight.w600,
-          color: isDark
-              ? Colors.white.withValues(alpha: 0.7)
-              : Colors.black.withValues(alpha: 0.6),
-        ),
-      );
 }
 
-class _AmountField extends StatelessWidget {
-  final TextEditingController controller;
-  final String symbol;
-  final bool isDark;
-  final VoidCallback onChanged;
+class _CategoryChoice extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final Color color;
+  final bool selected;
+  final VoidCallback onTap;
 
-  const _AmountField({
-    required this.controller,
-    required this.symbol,
-    required this.isDark,
-    required this.onChanged,
+  const _CategoryChoice({
+    required this.label,
+    required this.icon,
+    required this.color,
+    required this.selected,
+    required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            AppColors.primary.withValues(alpha: 0.15),
-            AppColors.primaryLight.withValues(alpha: 0.08),
-          ],
-        ),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-            color: AppColors.primary.withValues(alpha: 0.3), width: 1),
-      ),
-      child: Row(
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Column(
         children: [
-          Text(
-            symbol,
-            style: GoogleFonts.inter(
-              fontSize: 32,
-              fontWeight: FontWeight.w700,
-              color: AppColors.primary,
-            ),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: TextField(
-              controller: controller,
-              keyboardType:
-                  const TextInputType.numberWithOptions(decimal: true),
-              style: GoogleFonts.inter(
-                fontSize: 36,
-                fontWeight: FontWeight.w700,
-                color: isDark ? Colors.white : const Color(0xFF1a1a2e),
-              ),
-              decoration: InputDecoration(
-                border: InputBorder.none,
-                hintText: '0.00',
-                hintStyle: GoogleFonts.inter(
-                  fontSize: 36,
-                  fontWeight: FontWeight.w700,
-                  color: isDark
-                      ? Colors.white.withValues(alpha: 0.3)
-                      : Colors.black.withValues(alpha: 0.2),
-                ),
-                fillColor: Colors.transparent,
-                filled: true,
-              ),
-              onChanged: (_) => onChanged(),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _CategoryGrid extends StatelessWidget {
-  final List<CategoryModel> categories;
-  final CategoryModel? selected;
-  final void Function(CategoryModel) onSelect;
-
-  const _CategoryGrid({
-    required this.categories,
-    required this.selected,
-    required this.onSelect,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return GridView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 4,
-        mainAxisSpacing: 12,
-        crossAxisSpacing: 12,
-        childAspectRatio: 0.85,
-      ),
-      itemCount: categories.length,
-      itemBuilder: (context, i) {
-        final cat = categories[i];
-        final isSelected = selected?.id == cat.id;
-        final color = AppColors.fromHex(cat.color);
-        return GestureDetector(
-          onTap: () => onSelect(cat),
-          child: AnimatedContainer(
+          AnimatedContainer(
             duration: const Duration(milliseconds: 200),
+            width: 64,
+            height: 64,
+            padding: const EdgeInsets.all(3),
             decoration: BoxDecoration(
-              color: isSelected
-                  ? color.withValues(alpha: 0.2)
-                  : Colors.transparent,
-              borderRadius: BorderRadius.circular(14),
+              shape: BoxShape.circle,
               border: Border.all(
-                color: isSelected ? color : Colors.transparent,
-                width: 1.5,
+                color: selected ? AppColors.primary : Colors.transparent,
+                width: 2.2,
               ),
             ),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                CategoryIcon(
-                  iconName: cat.icon,
-                  colorHex: cat.color,
-                  size: 40,
-                  iconSize: 18,
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  cat.name,
-                  style: GoogleFonts.inter(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w500,
-                    color: isSelected
-                        ? color
-                        : Theme.of(context)
-                            .colorScheme
-                            .onSurface
-                            .withValues(alpha: 0.7),
-                  ),
-                  textAlign: TextAlign.center,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
+            child: Container(
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: color.withValues(alpha: context.isDark ? 0.18 : 0.12),
+              ),
+              alignment: Alignment.center,
+              child: GlossyIcon(icon: icon, color: color, size: 34, circle: true, iconSize: 19),
             ),
           ),
-        );
-      },
-    );
-  }
-}
-
-class _AccountSelector extends StatelessWidget {
-  final List<AccountModel> accounts;
-  final AccountModel? selected;
-  final void Function(AccountModel) onSelect;
-  final bool isDark;
-
-  const _AccountSelector({
-    required this.accounts,
-    required this.selected,
-    required this.onSelect,
-    required this.isDark,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      height: 56,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        itemCount: accounts.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 8),
-        itemBuilder: (context, i) {
-          final acc = accounts[i];
-          final isSelected = selected?.id == acc.id;
-          final color = AppColors.fromHex(acc.color);
-          return GestureDetector(
-            onTap: () => onSelect(acc),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-              decoration: BoxDecoration(
-                color: isSelected
-                    ? color.withValues(alpha: 0.15)
-                    : isDark
-                        ? AppColors.darkCardAlt
-                        : AppColors.lightCardAlt,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: isSelected ? color : Colors.transparent,
-                  width: 1.5,
-                ),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(AppIcons.fromName(acc.icon),
-                      size: 18, color: color),
-                  const SizedBox(width: 8),
-                  Text(
-                    acc.name,
-                    style: GoogleFonts.inter(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w500,
-                      color: isSelected
-                          ? color
-                          : isDark
-                              ? Colors.white
-                              : const Color(0xFF1a1a2e),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          );
-        },
+          const SizedBox(height: 6),
+          Text(label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: jakarta(12,
+                  weight: selected ? FontWeight.w700 : FontWeight.w500,
+                  color: selected ? AppColors.primary : context.textSecondary)),
+        ],
       ),
     );
   }

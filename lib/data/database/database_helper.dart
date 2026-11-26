@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import 'package:cashpilot/data/models/transaction_model.dart';
@@ -11,7 +12,7 @@ import 'package:cashpilot/data/database/seed_data.dart';
 
 class DatabaseHelper {
   static const _dbName = 'cashpilot.db';
-  static const _dbVersion = 1;
+  static const _dbVersion = 2;
 
   DatabaseHelper._();
   static final DatabaseHelper instance = DatabaseHelper._();
@@ -136,7 +137,17 @@ class DatabaseHelper {
     await SeedData.seedAccounts(db);
   }
 
-  Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {}
+  Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
+    if (oldVersion < 2) {
+      // Refresh default category colours/icons to the new palette.
+      final batch = db.batch();
+      SeedData.defaultCategoryStyle.forEach((name, style) {
+        batch.update('categories', {'icon': style[0], 'color': style[1]},
+            where: 'name = ? AND isCustom = 0', whereArgs: [name]);
+      });
+      await batch.commit(noResult: true);
+    }
+  }
 
   // ── Transactions ───────────────────────────────────────────────────────────
 
@@ -316,5 +327,61 @@ class DatabaseHelper {
   Future<void> deleteReminder(String id) async {
     final db = await database;
     await db.delete('reminders', where: 'id = ?', whereArgs: [id]);
+  }
+
+  // ── Backup / Restore / Reset ──────────────────────────────────────────────
+
+  Future<String> exportBackupJson() async {
+    final db = await database;
+    final data = {
+      'version': 1,
+      'exportedAt': DateTime.now().toIso8601String(),
+      'transactions': await db.query('transactions'),
+      'accounts': await db.query('accounts'),
+      'categories': await db.query('categories'),
+      'budgets': await db.query('budgets'),
+      'goals': await db.query('goals'),
+      'debts': await db.query('debts'),
+      'reminders': await db.query('reminders'),
+    };
+    return jsonEncode(data);
+  }
+
+  Future<void> importBackupJson(String jsonStr) async {
+    final decoded = jsonDecode(jsonStr) as Map<String, dynamic>;
+    final db = await database;
+    await db.transaction((txn) async {
+      for (final table in [
+        'transactions',
+        'accounts',
+        'categories',
+        'budgets',
+        'goals',
+        'debts',
+        'reminders',
+      ]) {
+        await txn.delete(table);
+        final rows = (decoded[table] as List<dynamic>?) ?? [];
+        for (final row in rows) {
+          await txn.insert(
+            table,
+            Map<String, dynamic>.from(row as Map),
+            conflictAlgorithm: ConflictAlgorithm.replace,
+          );
+        }
+      }
+    });
+  }
+
+  Future<void> resetAllData() async {
+    final db = await database;
+    await db.transaction((txn) async {
+      await txn.delete('transactions');
+      await txn.delete('budgets');
+      await txn.delete('goals');
+      await txn.delete('debts');
+      await txn.delete('reminders');
+      await txn.rawUpdate('UPDATE accounts SET balance = 0.0');
+    });
   }
 }

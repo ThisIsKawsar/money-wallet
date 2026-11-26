@@ -2,6 +2,10 @@ class AppConstants {
   static const String defaultCurrency = 'USD';
   static const String defaultCurrencySymbol = '\$';
   static const String appName = 'CashPilot';
+  static const String tagline = 'Smart Wallet. Better Life.';
+  // Keep in sync with `version:` in pubspec.yaml.
+  static const String appVersion = '1.0.0';
+  static const String buildNumber = '1';
 
   static const Duration animFast = Duration(milliseconds: 200);
   static const Duration animNormal = Duration(milliseconds: 350);

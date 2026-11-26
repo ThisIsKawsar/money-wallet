@@ -1,512 +1,404 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:cashpilot/providers/settings_provider.dart';
 import 'package:cashpilot/providers/transaction_provider.dart';
 import 'package:cashpilot/providers/account_provider.dart';
 import 'package:cashpilot/providers/category_provider.dart';
 import 'package:cashpilot/core/theme/app_colors.dart';
+import 'package:cashpilot/core/constants/app_constants.dart';
+import 'package:cashpilot/core/utils/data_transfer.dart';
 import 'package:cashpilot/screens/passcode/passcode_screen.dart';
-import 'package:cashpilot/core/utils/export_helper.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:share_plus/share_plus.dart';
-import 'dart:io';
+import 'package:cashpilot/widgets/cashpilot_logo.dart';
+import 'package:cashpilot/widgets/wavy_background.dart';
+import 'package:cashpilot/widgets/ui_kit.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
 
+  static String themeLabel(ThemeMode m) => switch (m) {
+        ThemeMode.light => 'Light',
+        ThemeMode.dark => 'Dark',
+        ThemeMode.system => 'System',
+      };
+
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     final settings = context.watch<SettingsProvider>();
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text('Settings',
-            style: GoogleFonts.inter(
-                fontSize: 20,
-                fontWeight: FontWeight.w700,
-                color: isDark ? Colors.white : const Color(0xFF1a1a2e))),
+      body: WavyBackground(
+        child: SafeArea(
+          bottom: false,
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(20, 4, 20, 120),
+            children: [
+              const ScreenHeader(title: 'Preferences', showBack: true),
+              const SizedBox(height: 8),
+
+              const _GroupLabel('Preferences'),
+              _Tile(
+                icon: Icons.palette_outlined,
+                title: 'Appearance',
+                subtitle: 'Light, Dark, System',
+                trailing: '${themeLabel(settings.themeMode)} · ${settings.accentName}',
+                onTap: () => context.push('/settings/appearance'),
+              ),
+              _Tile(
+                icon: Icons.attach_money_rounded,
+                title: 'Currency',
+                subtitle: 'Display currency',
+                trailing: '${settings.currency} ${settings.currencySymbol}',
+                onTap: () => context.push('/settings/currency'),
+              ),
+              _Tile(
+                icon: Icons.shield_outlined,
+                title: 'Security',
+                subtitle: settings.passcodeEnabled ? 'PIN lock is on' : 'Protect the app with a PIN',
+                trailingWidget: Switch.adaptive(
+                  value: settings.passcodeEnabled,
+                  activeTrackColor: AppColors.primary,
+                  onChanged: (_) => _toggleSecurity(context, settings),
+                ),
+                onTap: () => _toggleSecurity(context, settings),
+              ),
+              const SizedBox(height: 14),
+
+              const _GroupLabel('Money'),
+              _Tile(
+                icon: Icons.account_balance_wallet_outlined,
+                title: 'My Wallet',
+                subtitle: 'Accounts & balances',
+                onTap: () => context.push('/accounts'),
+              ),
+              _Tile(
+                icon: Icons.receipt_long_outlined,
+                title: 'All Transactions',
+                subtitle: 'Search & filter history',
+                onTap: () => context.push('/transactions'),
+              ),
+              _Tile(
+                icon: Icons.category_outlined,
+                title: 'Categories',
+                subtitle: 'Customize income & expense types',
+                onTap: () => context.push('/settings/categories'),
+              ),
+              const SizedBox(height: 14),
+
+              const _GroupLabel('Data'),
+              _Tile(
+                icon: Icons.upload_file_rounded,
+                title: 'Export Data',
+                subtitle: 'CSV spreadsheet or full backup',
+                onTap: () => _showExport(context),
+              ),
+              _Tile(
+                icon: Icons.download_rounded,
+                title: 'Import Data',
+                subtitle: 'Restore a backup or import a CSV',
+                onTap: () => _showImport(context),
+              ),
+              const SizedBox(height: 14),
+
+              const _GroupLabel('App'),
+              _Tile(
+                icon: Icons.info_outline_rounded,
+                title: 'About App',
+                subtitle: 'Version ${AppConstants.appVersion}',
+                onTap: () => context.push('/settings/about'),
+              ),
+              const SizedBox(height: 16),
+
+              Container(
+                padding: const EdgeInsets.all(18),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(22),
+                  gradient: LinearGradient(colors: [
+                    AppColors.primary.withValues(alpha: context.isDark ? 0.16 : 0.06),
+                    AppColors.primary.withValues(alpha: context.isDark ? 0.10 : 0.13),
+                  ]),
+                  border: Border.all(color: AppColors.primary.withValues(alpha: 0.12)),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const CashPilotLogo(size: 44),
+                    const SizedBox(width: 12),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(AppConstants.appName,
+                            style: jakarta(18, weight: FontWeight.w800, color: context.textPrimary)),
+                        Text(AppConstants.tagline, style: jakarta(12, color: context.textSecondary)),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 40),
+    );
+  }
+
+  void _toggleSecurity(BuildContext context, SettingsProvider settings) {
+    if (settings.passcodeEnabled) {
+      settings.disablePasscode();
+      showToast(context, 'PIN lock turned off');
+    } else {
+      context.push('/passcode-lock', extra: {'mode': PasscodeMode.setup});
+    }
+  }
+
+  // ── Export ─────────────────────────────────────────────────────────────
+
+  Rect _shareOrigin(BuildContext context) {
+    final size = MediaQuery.of(context).size;
+    return Rect.fromCenter(center: Offset(size.width / 2, size.height / 2), width: 2, height: 2);
+  }
+
+  void _showExport(BuildContext context) {
+    final txp = context.read<TransactionProvider>();
+    final accs = context.read<AccountProvider>().accounts;
+    final cats = context.read<CategoryProvider>().categories;
+    final origin = _shareOrigin(context);
+
+    Future<void> run(BuildContext sheetCtx, Future<void> Function() job) async {
+      Navigator.pop(sheetCtx);
+      try {
+        await job();
+      } catch (e) {
+        if (context.mounted) showToast(context, 'Export failed: $e', error: true);
+      }
+    }
+
+    showAppSheet(
+      context,
+      builder: (ctx) => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // ── Appearance ──────────────────────────────────────────────────
-          _sectionHeader('Appearance', isDark),
-
-          // Theme toggle (inline)
-          _InlineTile(
-            icon: Icons.dark_mode_rounded,
-            iconColor: const Color(0xFF6c5ce7),
-            title: 'Theme',
-            isDark: isDark,
-            trailing: _ThemeSegmented(settings: settings),
+          Text('Export Data', style: jakarta(20, weight: FontWeight.w800, color: ctx.textPrimary)),
+          const SizedBox(height: 4),
+          Text('${txp.transactions.length} transactions · ${accs.length} accounts',
+              style: jakarta(13, color: ctx.textSecondary)),
+          const SizedBox(height: 16),
+          _OptionCard(
+            icon: Icons.table_chart_rounded,
+            color: AppColors.income,
+            title: 'Spreadsheet (CSV)',
+            subtitle: 'Open in Excel, Numbers or Google Sheets',
+            onTap: () => run(ctx, () async {
+              if (txp.transactions.isEmpty) {
+                if (context.mounted) showToast(context, 'No transactions to export', error: true);
+                return;
+              }
+              await DataTransfer.shareFile(
+                'cashpilot_transactions_${DataTransfer.stamp()}.csv',
+                DataTransfer.buildCsv(txp.transactions, accs, cats),
+                origin: origin,
+                text: 'CashPilot transactions',
+              );
+            }),
           ),
-
-          const SizedBox(height: 8),
-
-          // ── General ─────────────────────────────────────────────────────
-          _sectionHeader('General', isDark),
-
-          _SettingsTile(
-            icon: Icons.attach_money_rounded,
-            iconColor: AppColors.income,
-            title: 'Currency',
-            subtitle: '${settings.currency}  ${settings.currencySymbol}',
-            isDark: isDark,
-            onTap: () => context.push('/settings/currency'),
-          ),
-
-          // Decimal formatting (inline toggle)
-          _InlineTile(
-            icon: Icons.pin_outlined,
-            iconColor: AppColors.primary,
-            title: 'Decimal Places',
-            isDark: isDark,
-            trailing: _DecimalToggle(settings: settings, isDark: isDark),
-          ),
-
-          const SizedBox(height: 8),
-
-          // ── Data ────────────────────────────────────────────────────────
-          _sectionHeader('Data', isDark),
-
-          _SettingsTile(
-            icon: Icons.category_rounded,
-            iconColor: AppColors.primary,
-            title: 'Categories',
-            subtitle: 'Create, edit & delete categories',
-            isDark: isDark,
-            onTap: () => context.push('/settings/categories'),
-          ),
-
-          _SettingsTile(
-            icon: Icons.account_balance_wallet_rounded,
-            iconColor: const Color(0xFF00d4aa),
-            title: 'Accounts',
-            subtitle: 'Manage your accounts',
-            isDark: isDark,
-            onTap: () => context.push('/accounts'),
-          ),
-
-          const SizedBox(height: 8),
-
-          // ── Finance ─────────────────────────────────────────────────────
-          _sectionHeader('Finance', isDark),
-
-          _SettingsTile(
-            icon: Icons.credit_score_rounded,
-            iconColor: const Color(0xFFff7675),
-            title: 'Debts & Loans',
-            subtitle: 'Track money you owe or are owed',
-            isDark: isDark,
-            onTap: () => context.push('/settings/debts'),
-          ),
-
-          _SettingsTile(
-            icon: Icons.alarm_rounded,
-            iconColor: const Color(0xFFfdcb6e),
-            title: 'Bill Reminders',
-            subtitle: 'Set up recurring bill reminders',
-            isDark: isDark,
-            onTap: () => context.push('/settings/reminders'),
-          ),
-
-          const SizedBox(height: 8),
-
-          // ── Security ────────────────────────────────────────────────────
-          _sectionHeader('Security', isDark),
-
-          _InlineTile(
-            icon: Icons.lock_rounded,
-            iconColor: const Color(0xFF00d4aa),
-            title: 'App Lock',
-            subtitle: settings.passcodeEnabled ? 'PIN enabled' : 'Disabled',
-            isDark: isDark,
-            trailing: Switch(
-              value: settings.passcodeEnabled,
-              onChanged: (v) async {
-                if (v) {
-                  context.push('/passcode-lock',
-                      extra: {'mode': PasscodeMode.setup});
-                } else {
-                  await settings.disablePasscode();
-                }
-              },
-            ),
-          ),
-
-          if (settings.passcodeEnabled)
-            _SettingsTile(
-              icon: Icons.password_rounded,
-              iconColor: AppColors.primary,
-              title: 'Change Passcode',
-              isDark: isDark,
-              onTap: () => context.push('/passcode-lock',
-                  extra: {'mode': PasscodeMode.change}),
-            ),
-
-          const SizedBox(height: 8),
-
-          // ── About ───────────────────────────────────────────────────────
-          _sectionHeader('About', isDark),
-
-          _SettingsTile(
-            icon: Icons.info_outline_rounded,
-            iconColor: AppColors.primary,
-            title: 'Version',
-            subtitle: '1.0.0',
-            isDark: isDark,
-            onTap: null,
-          ),
-
-          const SizedBox(height: 8),
-
-          // ── Data Management ─────────────────────────────────────────────
-          _sectionHeader('Data Management', isDark),
-
-          _SettingsTile(
-            icon: Icons.file_download_rounded,
-            iconColor: const Color(0xFF00d4aa),
-            title: 'Export Data',
-            subtitle: 'Export transactions to CSV',
-            isDark: isDark,
-            onTap: () => _showExportDialog(context, settings),
+          const SizedBox(height: 10),
+          _OptionCard(
+            icon: Icons.backup_rounded,
+            color: AppColors.transfer,
+            title: 'Full Backup (JSON)',
+            subtitle: 'Accounts, categories, transactions, budgets & goals',
+            onTap: () => run(ctx, () async {
+              await DataTransfer.shareFile(
+                'cashpilot_backup_${DataTransfer.stamp()}.json',
+                await DataTransfer.buildBackupJson(),
+                origin: origin,
+                text: 'CashPilot backup',
+              );
+            }),
           ),
         ],
       ),
     );
   }
 
-  Widget _sectionHeader(String title, bool isDark) => Padding(
-        padding: const EdgeInsets.fromLTRB(4, 16, 4, 8),
-        child: Text(
-          title.toUpperCase(),
-          style: GoogleFonts.inter(
-            fontSize: 11,
-            fontWeight: FontWeight.w700,
-            color: AppColors.primary,
-            letterSpacing: 1.0,
-          ),
-        ),
-      );
+  // ── Import ─────────────────────────────────────────────────────────────
 
-  void _showExportDialog(BuildContext context, SettingsProvider settings) {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('Export Data',
-            style: GoogleFonts.inter(fontWeight: FontWeight.w700)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.receipt_long_rounded, color: AppColors.primary),
-              title: Text('Transactions',
-                  style: GoogleFonts.inter(fontWeight: FontWeight.w600)),
-              onTap: () {
-                Navigator.pop(ctx);
-                _exportTransactions(context, settings);
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.account_balance_wallet_rounded, color: AppColors.income),
-              title: Text('Accounts',
-                  style: GoogleFonts.inter(fontWeight: FontWeight.w600)),
-              onTap: () {
-                Navigator.pop(ctx);
-                _exportAccounts(context, settings);
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.category_rounded, color: AppColors.expense),
-              title: Text('Categories',
-                  style: GoogleFonts.inter(fontWeight: FontWeight.w600)),
-              onTap: () {
-                Navigator.pop(ctx);
-                _exportCategories(context, settings);
-              },
-            ),
-          ],
-        ),
+  void _showImport(BuildContext context) {
+    final reload = DataTransfer.reloader(context);
+    showAppSheet(
+      context,
+      builder: (ctx) => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text('Import Data', style: jakarta(20, weight: FontWeight.w800, color: ctx.textPrimary)),
+          const SizedBox(height: 12),
+          _Bullet('A CashPilot backup (.json) restores everything it contains.'),
+          _Bullet('A CSV with Date, Type, Category, Account, Amount, Note columns adds transactions. '
+              'Missing accounts/categories are created and balances updated.'),
+          _Bullet('Rows that already exist are skipped, so importing twice is safe.'),
+          const SizedBox(height: 18),
+          GradientButton(
+            label: 'Choose File',
+            trailingIcon: Icons.folder_open_rounded,
+            onPressed: () async {
+              Navigator.pop(ctx);
+              try {
+                final res = await DataTransfer.pickAndImport();
+                if (res == null) return;
+                await reload();
+                if (!context.mounted) return;
+                showToast(
+                  context,
+                  res.kind == 'backup'
+                      ? 'Backup restored · ${res.added} transactions'
+                      : 'Imported ${res.added} transactions${res.skipped > 0 ? ' · ${res.skipped} skipped' : ''}',
+                );
+              } catch (e) {
+                if (context.mounted) {
+                  showToast(context, e is FormatException ? e.message : 'Import failed: $e', error: true);
+                }
+              }
+            },
+          ),
+        ],
       ),
     );
   }
+}
 
-  Future<void> _exportTransactions(BuildContext context, SettingsProvider settings) async {
-    try {
-      final txProvider = context.read<TransactionProvider>();
-      final accProvider = context.read<AccountProvider>();
-      final catProvider = context.read<CategoryProvider>();
+class _Bullet extends StatelessWidget {
+  final String text;
+  const _Bullet(this.text);
 
-      final csv = ExportHelper.exportTransactionsToCSV(
-        txProvider.transactions,
-        accProvider.accounts,
-        catProvider.categories,
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Icon(Icons.circle, size: 6, color: AppColors.primary),
+            ),
+            const SizedBox(width: 10),
+            Expanded(child: Text(text, style: jakarta(13.5, color: context.textSecondary, height: 1.45))),
+          ],
+        ),
       );
-
-      final directory = await getTemporaryDirectory();
-      final path = '${directory.path}/cashpilot_transactions.csv';
-      final file = File(path);
-      await file.writeAsString(csv);
-
-      await Share.shareXFiles([XFile(path)], text: 'CashPilot Transactions Export');
-    } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Export failed: $e')),
-        );
-      }
-    }
-  }
-
-  Future<void> _exportAccounts(BuildContext context, SettingsProvider settings) async {
-    try {
-      final accProvider = context.read<AccountProvider>();
-
-      final csv = ExportHelper.exportAccountsToCSV(accProvider.accounts);
-
-      final directory = await getTemporaryDirectory();
-      final path = '${directory.path}/cashpilot_accounts.csv';
-      final file = File(path);
-      await file.writeAsString(csv);
-
-      await Share.shareXFiles([XFile(path)], text: 'CashPilot Accounts Export');
-    } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Export failed: $e')),
-        );
-      }
-    }
-  }
-
-  Future<void> _exportCategories(BuildContext context, SettingsProvider settings) async {
-    try {
-      final catProvider = context.read<CategoryProvider>();
-
-      final csv = ExportHelper.exportCategoriesToCSV(catProvider.categories);
-
-      final directory = await getTemporaryDirectory();
-      final path = '${directory.path}/cashpilot_categories.csv';
-      final file = File(path);
-      await file.writeAsString(csv);
-
-      await Share.shareXFiles([XFile(path)], text: 'CashPilot Categories Export');
-    } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Export failed: $e')),
-        );
-      }
-    }
-  }
 }
 
-// Segmented theme control
-class _ThemeSegmented extends StatelessWidget {
-  final SettingsProvider settings;
-  const _ThemeSegmented({required this.settings});
-
-  @override
-  Widget build(BuildContext context) {
-    final options = [
-      {'mode': ThemeMode.dark, 'icon': Icons.dark_mode_rounded, 'label': 'Dark'},
-      {'mode': ThemeMode.system, 'icon': Icons.brightness_auto_rounded, 'label': 'Auto'},
-      {'mode': ThemeMode.light, 'icon': Icons.light_mode_rounded, 'label': 'Light'},
-    ];
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: options.map((o) {
-        final mode = o['mode'] as ThemeMode;
-        final isSelected = settings.themeMode == mode;
-        return GestureDetector(
-          onTap: () => settings.setThemeMode(mode),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 200),
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-            decoration: BoxDecoration(
-              color: isSelected
-                  ? AppColors.primary
-                  : AppColors.primary.withValues(alpha: 0.08),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Icon(
-              o['icon'] as IconData,
-              size: 18,
-              color: isSelected ? Colors.white : AppColors.primary,
-            ),
-          ),
-        );
-      }).toList(),
-    );
-  }
-}
-
-// Decimal places toggle
-class _DecimalToggle extends StatelessWidget {
-  final SettingsProvider settings;
-  final bool isDark;
-  const _DecimalToggle({required this.settings, required this.isDark});
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [0, 2].map((places) {
-        final isSelected = settings.decimalPlaces == places;
-        return GestureDetector(
-          onTap: () => settings.setDecimalPlaces(places),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 200),
-            margin: const EdgeInsets.only(left: 6),
-            padding:
-                const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-            decoration: BoxDecoration(
-              color: isSelected
-                  ? AppColors.primary
-                  : AppColors.primary.withValues(alpha: 0.08),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Text(
-              places == 0 ? '1,000' : '1,000.00',
-              style: GoogleFonts.inter(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: isSelected ? Colors.white : AppColors.primary,
-              ),
-            ),
-          ),
-        );
-      }).toList(),
-    );
-  }
-}
-
-class _SettingsTile extends StatelessWidget {
+class _OptionCard extends StatelessWidget {
   final IconData icon;
-  final Color iconColor;
+  final Color color;
   final String title;
-  final String? subtitle;
-  final bool isDark;
-  final VoidCallback? onTap;
+  final String subtitle;
+  final VoidCallback onTap;
 
-  const _SettingsTile({
+  const _OptionCard({
     required this.icon,
-    required this.iconColor,
+    required this.color,
     required this.title,
-    this.subtitle,
-    required this.isDark,
+    required this.subtitle,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      decoration: BoxDecoration(
-        color: isDark ? AppColors.darkCard : Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-            color: isDark ? AppColors.darkBorder : AppColors.lightBorder),
-      ),
-      child: ListTile(
-        onTap: onTap,
-        leading: Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-              color: iconColor.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(10)),
-          child: Icon(icon, color: iconColor, size: 20),
-        ),
-        title: Text(title,
-            style: GoogleFonts.inter(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color:
-                    isDark ? Colors.white : const Color(0xFF1a1a2e))),
-        subtitle: subtitle != null
-            ? Text(subtitle!,
-                style: GoogleFonts.inter(
-                    fontSize: 12,
-                    color: isDark
-                        ? Colors.white.withValues(alpha: 0.45)
-                        : Colors.black.withValues(alpha: 0.45)))
-            : null,
-        trailing: onTap != null
-            ? Icon(Icons.chevron_right_rounded,
-                color: isDark
-                    ? Colors.white.withValues(alpha: 0.3)
-                    : Colors.black.withValues(alpha: 0.3))
-            : null,
-        shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+    return SoftCard(
+      shadow: false,
+      radius: 18,
+      padding: const EdgeInsets.all(14),
+      onTap: onTap,
+      child: Row(
+        children: [
+          GlossyIcon(icon: icon, color: color, size: 46),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: jakarta(15, weight: FontWeight.w700, color: context.textPrimary)),
+                const SizedBox(height: 2),
+                Text(subtitle, style: jakarta(12.5, color: context.textSecondary)),
+              ],
+            ),
+          ),
+          Icon(Icons.chevron_right_rounded, color: context.textTertiary),
+        ],
       ),
     );
   }
 }
 
-class _InlineTile extends StatelessWidget {
-  final IconData icon;
-  final Color iconColor;
-  final String title;
-  final String? subtitle;
-  final Widget trailing;
-  final bool isDark;
+class _GroupLabel extends StatelessWidget {
+  final String text;
+  const _GroupLabel(this.text);
 
-  const _InlineTile({
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.only(left: 4, bottom: 10),
+        child: Text(text.toUpperCase(),
+            style: jakarta(11.5, weight: FontWeight.w700, color: context.textTertiary, spacing: 1)),
+      );
+}
+
+class _Tile extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final String? trailing;
+  final Widget? trailingWidget;
+  final VoidCallback onTap;
+
+  const _Tile({
     required this.icon,
-    required this.iconColor,
     required this.title,
-    this.subtitle,
-    required this.trailing,
-    required this.isDark,
+    required this.subtitle,
+    this.trailing,
+    this.trailingWidget,
+    required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(
-        color: isDark ? AppColors.darkCard : Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-            color: isDark ? AppColors.darkBorder : AppColors.lightBorder),
-      ),
+    return SoftCard(
+      margin: const EdgeInsets.only(bottom: 10),
+      radius: 18,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      onTap: onTap,
       child: Row(
         children: [
           Container(
-            padding: const EdgeInsets.all(8),
+            width: 40,
+            height: 40,
             decoration: BoxDecoration(
-                color: iconColor.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(10)),
-            child: Icon(icon, color: iconColor, size: 20),
+              color: AppColors.primary.withValues(alpha: context.isDark ? 0.15 : 0.08),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(icon, size: 21, color: context.isDark ? AppColors.accent : AppColors.primaryDark),
           ),
           const SizedBox(width: 14),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title,
-                    style: GoogleFonts.inter(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: isDark
-                            ? Colors.white
-                            : const Color(0xFF1a1a2e))),
-                if (subtitle != null)
-                  Text(subtitle!,
-                      style: GoogleFonts.inter(
-                          fontSize: 12,
-                          color: isDark
-                              ? Colors.white.withValues(alpha: 0.45)
-                              : Colors.black.withValues(alpha: 0.45))),
+                Text(title, style: jakarta(15, weight: FontWeight.w600, color: context.textPrimary)),
+                const SizedBox(height: 1),
+                Text(subtitle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: jakarta(12, color: context.textSecondary)),
               ],
             ),
           ),
-          trailing,
+          if (trailingWidget != null)
+            trailingWidget!
+          else ...[
+            if (trailing != null)
+              Text(trailing!, style: jakarta(12, weight: FontWeight.w600, color: context.textSecondary)),
+            const SizedBox(width: 2),
+            Icon(Icons.chevron_right_rounded, color: context.textTertiary),
+          ],
         ],
       ),
     );

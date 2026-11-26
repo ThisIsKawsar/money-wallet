@@ -72,7 +72,7 @@ class _CurrencyPickerScreenState extends State<CurrencyPickerScreen> {
                             color: AppColors.primary)),
                   ),
                   trailing: isSelected
-                      ? const Icon(Icons.check_rounded,
+                      ? Icon(Icons.check_rounded,
                           color: AppColors.primary)
                       : null,
                 );

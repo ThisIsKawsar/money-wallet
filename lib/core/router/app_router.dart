@@ -11,20 +11,27 @@ import 'package:cashpilot/screens/budgets/budgets_screen.dart';
 import 'package:cashpilot/screens/settings/settings_screen.dart';
 import 'package:cashpilot/screens/settings/currency_picker_screen.dart';
 import 'package:cashpilot/screens/settings/category_management_screen.dart';
-import 'package:cashpilot/screens/settings/debt_tracker_screen.dart';
-import 'package:cashpilot/screens/settings/reminders_screen.dart';
+import 'package:cashpilot/screens/settings/appearance_screen.dart';
 import 'package:cashpilot/screens/passcode/passcode_screen.dart';
+import 'package:cashpilot/screens/onboarding/onboarding_screen.dart';
+import 'package:cashpilot/screens/calendar/calendar_screen.dart';
+import 'package:cashpilot/screens/settings/about_screen.dart';
 import 'package:cashpilot/widgets/main_shell.dart';
 
 final _rootNavKey = GlobalKey<NavigatorState>();
 final _shellNavKey = GlobalKey<NavigatorState>();
 
 // Create router once — do NOT call inside a build/Consumer or it resets on every rebuild.
-GoRouter createRouter() {
+GoRouter createRouter({String initialLocation = '/'}) {
   return GoRouter(
     navigatorKey: _rootNavKey,
-    initialLocation: '/',
+    initialLocation: initialLocation,
     routes: [
+      GoRoute(
+        path: '/onboarding',
+        parentNavigatorKey: _rootNavKey,
+        builder: (context, state) => const OnboardingScreen(),
+      ),
       ShellRoute(
         navigatorKey: _shellNavKey,
         builder: (context, state, child) => MainShell(child: child),
@@ -33,11 +40,6 @@ GoRouter createRouter() {
             path: '/',
             pageBuilder: (context, state) =>
                 const NoTransitionPage(child: DashboardScreen()),
-          ),
-          GoRoute(
-            path: '/transactions',
-            pageBuilder: (context, state) =>
-                const NoTransitionPage(child: TransactionsScreen()),
           ),
           GoRoute(
             path: '/analytics',
@@ -50,11 +52,26 @@ GoRouter createRouter() {
                 const NoTransitionPage(child: BudgetsScreen()),
           ),
           GoRoute(
-            path: '/settings',
+            path: '/accounts',
             pageBuilder: (context, state) =>
-                const NoTransitionPage(child: SettingsScreen()),
+                const NoTransitionPage(child: AccountsScreen()),
+          ),
+          GoRoute(
+            path: '/categories',
+            pageBuilder: (context, state) =>
+                const NoTransitionPage(child: CategoryManagementScreen()),
           ),
         ],
+      ),
+      GoRoute(
+        path: '/settings',
+        parentNavigatorKey: _rootNavKey,
+        builder: (context, state) => const SettingsScreen(),
+      ),
+      GoRoute(
+        path: '/transactions',
+        parentNavigatorKey: _rootNavKey,
+        builder: (context, state) => const TransactionsScreen(),
       ),
       GoRoute(
         path: '/add-transaction',
@@ -68,9 +85,19 @@ GoRouter createRouter() {
         },
       ),
       GoRoute(
-        path: '/accounts',
+        path: '/transactions',
         parentNavigatorKey: _rootNavKey,
-        builder: (context, state) => const AccountsScreen(),
+        builder: (context, state) => const TransactionsScreen(),
+      ),
+      GoRoute(
+        path: '/calendar',
+        parentNavigatorKey: _rootNavKey,
+        builder: (context, state) => const CalendarScreen(),
+      ),
+      GoRoute(
+        path: '/settings/about',
+        parentNavigatorKey: _rootNavKey,
+        builder: (context, state) => const AboutScreen(),
       ),
       GoRoute(
         path: '/accounts/:id',
@@ -94,14 +121,9 @@ GoRouter createRouter() {
         builder: (context, state) => const CategoryManagementScreen(),
       ),
       GoRoute(
-        path: '/settings/debts',
+        path: '/settings/appearance',
         parentNavigatorKey: _rootNavKey,
-        builder: (context, state) => const DebtTrackerScreen(),
-      ),
-      GoRoute(
-        path: '/settings/reminders',
-        parentNavigatorKey: _rootNavKey,
-        builder: (context, state) => const RemindersScreen(),
+        builder: (context, state) => const AppearanceScreen(),
       ),
       GoRoute(
         path: '/passcode-lock',

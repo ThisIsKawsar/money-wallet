@@ -200,6 +200,22 @@ class AccountProvider extends ChangeNotifier {
     }
   }
 
+  /// Applies (or reverts) a transaction's effect on account balances.
+  Future<void> applyTransaction(TransactionModel t, {bool revert = false}) async {
+    final sign = revert ? -1 : 1;
+    final from = getAccountById(t.accountId);
+    switch (t.type) {
+      case TransactionType.income:
+        if (from != null) await updateAccount(from.copyWith(balance: from.balance + sign * t.amount));
+      case TransactionType.expense:
+        if (from != null) await updateAccount(from.copyWith(balance: from.balance - sign * t.amount));
+      case TransactionType.transfer:
+        if (from != null) await updateAccount(from.copyWith(balance: from.balance - sign * t.amount));
+        final to = t.toAccountId == null ? null : getAccountById(t.toAccountId!);
+        if (to != null) await updateAccount(to.copyWith(balance: to.balance + sign * t.amount));
+    }
+  }
+
   void clearError() {
     _error = null;
     notifyListeners();

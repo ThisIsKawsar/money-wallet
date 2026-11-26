@@ -4,26 +4,46 @@ import 'package:uuid/uuid.dart';
 class SeedData {
   static const _uuid = Uuid();
 
+  /// Default category look (name -> [icon, color]); used by the v2 migration.
+  static const Map<String, List<String>> defaultCategoryStyle = {
+    'Salary': ['wallet', '#16A34A'],
+    'Freelance': ['laptop', '#F59E0B'],
+    'Investment': ['trending_up', '#6366F1'],
+    'Gift': ['card_giftcard', '#EC4899'],
+    'Interest': ['account_balance', '#0EA5E9'],
+    'Other Income': ['add_circle', '#64748B'],
+    'Food & Dining': ['restaurant', '#EF4444'],
+    'Shopping': ['shopping_bag', '#A855F7'],
+    'Transport': ['directions_car', '#3B82F6'],
+    'Bills & Utilities': ['receipt_long', '#F59E0B'],
+    'Entertainment': ['movie', '#EC4899'],
+    'Health': ['favorite', '#F43F5E'],
+    'Education': ['school', '#14B8A6'],
+    'Savings': ['savings', '#10B981'],
+    'Rent': ['home', '#F97316'],
+    'Other Expense': ['remove_circle', '#64748B'],
+  };
+
   static Future<void> seedCategories(Database db) async {
     final categories = [
       // Income
-      {'id': _uuid.v4(), 'name': 'Salary', 'icon': 'work', 'color': '#00d4aa', 'type': 'income', 'isCustom': 0},
-      {'id': _uuid.v4(), 'name': 'Freelance', 'icon': 'laptop', 'color': '#4facfe', 'type': 'income', 'isCustom': 0},
-      {'id': _uuid.v4(), 'name': 'Investment', 'icon': 'trending_up', 'color': '#a29bfe', 'type': 'income', 'isCustom': 0},
-      {'id': _uuid.v4(), 'name': 'Gift', 'icon': 'card_giftcard', 'color': '#fd79a8', 'type': 'income', 'isCustom': 0},
-      {'id': _uuid.v4(), 'name': 'Interest', 'icon': 'account_balance', 'color': '#ffeaa7', 'type': 'income', 'isCustom': 0},
-      {'id': _uuid.v4(), 'name': 'Other Income', 'icon': 'add_circle', 'color': '#636e72', 'type': 'income', 'isCustom': 0},
+      {'id': _uuid.v4(), 'name': 'Salary', 'icon': 'wallet', 'color': '#16A34A', 'type': 'income', 'isCustom': 0},
+      {'id': _uuid.v4(), 'name': 'Freelance', 'icon': 'laptop', 'color': '#F59E0B', 'type': 'income', 'isCustom': 0},
+      {'id': _uuid.v4(), 'name': 'Investment', 'icon': 'trending_up', 'color': '#6366F1', 'type': 'income', 'isCustom': 0},
+      {'id': _uuid.v4(), 'name': 'Gift', 'icon': 'card_giftcard', 'color': '#EC4899', 'type': 'income', 'isCustom': 0},
+      {'id': _uuid.v4(), 'name': 'Interest', 'icon': 'account_balance', 'color': '#0EA5E9', 'type': 'income', 'isCustom': 0},
+      {'id': _uuid.v4(), 'name': 'Other Income', 'icon': 'add_circle', 'color': '#64748B', 'type': 'income', 'isCustom': 0},
       // Expense
-      {'id': _uuid.v4(), 'name': 'Food & Dining', 'icon': 'restaurant', 'color': '#ff6b6b', 'type': 'expense', 'isCustom': 0},
-      {'id': _uuid.v4(), 'name': 'Shopping', 'icon': 'shopping_bag', 'color': '#e17055', 'type': 'expense', 'isCustom': 0},
-      {'id': _uuid.v4(), 'name': 'Transport', 'icon': 'directions_car', 'color': '#fdcb6e', 'type': 'expense', 'isCustom': 0},
-      {'id': _uuid.v4(), 'name': 'Bills & Utilities', 'icon': 'receipt_long', 'color': '#74b9ff', 'type': 'expense', 'isCustom': 0},
-      {'id': _uuid.v4(), 'name': 'Entertainment', 'icon': 'movie', 'color': '#a29bfe', 'type': 'expense', 'isCustom': 0},
-      {'id': _uuid.v4(), 'name': 'Health', 'icon': 'favorite', 'color': '#ff7675', 'type': 'expense', 'isCustom': 0},
-      {'id': _uuid.v4(), 'name': 'Education', 'icon': 'school', 'color': '#55efc4', 'type': 'expense', 'isCustom': 0},
-      {'id': _uuid.v4(), 'name': 'Savings', 'icon': 'savings', 'color': '#00cec9', 'type': 'expense', 'isCustom': 0},
-      {'id': _uuid.v4(), 'name': 'Rent', 'icon': 'home', 'color': '#fab1a0', 'type': 'expense', 'isCustom': 0},
-      {'id': _uuid.v4(), 'name': 'Other Expense', 'icon': 'remove_circle', 'color': '#636e72', 'type': 'expense', 'isCustom': 0},
+      {'id': _uuid.v4(), 'name': 'Food & Dining', 'icon': 'restaurant', 'color': '#EF4444', 'type': 'expense', 'isCustom': 0},
+      {'id': _uuid.v4(), 'name': 'Shopping', 'icon': 'shopping_bag', 'color': '#A855F7', 'type': 'expense', 'isCustom': 0},
+      {'id': _uuid.v4(), 'name': 'Transport', 'icon': 'directions_car', 'color': '#3B82F6', 'type': 'expense', 'isCustom': 0},
+      {'id': _uuid.v4(), 'name': 'Bills & Utilities', 'icon': 'receipt_long', 'color': '#F59E0B', 'type': 'expense', 'isCustom': 0},
+      {'id': _uuid.v4(), 'name': 'Entertainment', 'icon': 'movie', 'color': '#EC4899', 'type': 'expense', 'isCustom': 0},
+      {'id': _uuid.v4(), 'name': 'Health', 'icon': 'favorite', 'color': '#F43F5E', 'type': 'expense', 'isCustom': 0},
+      {'id': _uuid.v4(), 'name': 'Education', 'icon': 'school', 'color': '#14B8A6', 'type': 'expense', 'isCustom': 0},
+      {'id': _uuid.v4(), 'name': 'Savings', 'icon': 'savings', 'color': '#10B981', 'type': 'expense', 'isCustom': 0},
+      {'id': _uuid.v4(), 'name': 'Rent', 'icon': 'home', 'color': '#F97316', 'type': 'expense', 'isCustom': 0},
+      {'id': _uuid.v4(), 'name': 'Other Expense', 'icon': 'remove_circle', 'color': '#64748B', 'type': 'expense', 'isCustom': 0},
     ];
 
     final batch = db.batch();
@@ -41,7 +61,7 @@ class SeedData {
         'name': 'Cash Wallet',
         'type': 'cash',
         'icon': 'wallet',
-        'color': '#00d4aa',
+        'color': '#16A34A',
         'balance': 0.0,
         'currency': 'USD',
         'isDefault': 1,

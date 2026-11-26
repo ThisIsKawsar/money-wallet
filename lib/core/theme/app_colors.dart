@@ -1,68 +1,88 @@
 import 'package:flutter/material.dart';
 
 class AppColors {
-  // Primary - MyMoney Pro inspired blue-green gradient
-  static const Color primary = Color(0xFF00B4D8);
-  static const Color primaryLight = Color(0xFF48CAE4);
-  static const Color primaryDark = Color(0xFF0077B6);
-  static const Color accent = Color(0xFF90E0EF);
+  // ── Brand (follows the accent chosen in Appearance) ──────────────────
+  static const Color defaultBrand = Color(0xFF10A352);
+  static Color _brand = defaultBrand;
 
-  // Semantic - Professional finance colors
-  static const Color income = Color(0xFF2ECC71);
-  static const Color incomeLight = Color(0xFF58D68D);
-  static const Color incomeDark = Color(0xFF27AE60);
+  /// Called by SettingsProvider whenever the accent changes.
+  static void setBrand(Color c) => _brand = c;
+
+  static bool get _isDefault => _brand.toARGB32() == defaultBrand.toARGB32();
+  static Color get primary => _brand;
+  static Color get primaryLight =>
+      _isDefault ? const Color(0xFF28C76F) : Color.lerp(_brand, Colors.white, 0.18)!;
+  static Color get primaryDark =>
+      _isDefault ? const Color(0xFF0A7E3E) : Color.lerp(_brand, Colors.black, 0.22)!;
+  static Color get accent =>
+      _isDefault ? const Color(0xFF6FE3A1) : Color.lerp(_brand, Colors.white, 0.45)!;
+
+  /// Very light tints of the brand for backgrounds (t = 0 → white).
+  static Color tint(double t) => Color.lerp(Colors.white, _brand, t)!;
+
+  // Soft surfaces
+  static Color get mintBg => tint(0.04);
+  static Color get mintSoft => tint(0.10);
+  static Color get mintWave => tint(0.16);
+
+  // Semantic - Finance colors
+  static const Color income = Color(0xFF16A34A);
+  static const Color incomeLight = Color(0xFF28C76F);
+  static const Color incomeDark = Color(0xFF0A7E3E);
   static const Color expense = Color(0xFFE74C3C);
-  static const Color expenseLight = Color(0xFFEC7063);
-  static const Color expenseDark = Color(0xFFCB4335);
-  static const Color transfer = Color(0xFF9B59B6);
-  static const Color transferLight = Color(0xFFAF7AC5);
-  static const Color transferDark = Color(0xFF884EA0);
+  static const Color expenseLight = Color(0xFFFDECEC);
+  static const Color expenseDark = Color(0xFFC0392B);
+  static const Color transfer = Color(0xFF2F80ED);
+  static const Color transferLight = Color(0xFFEAF2FD);
+  static const Color transferDark = Color(0xFF1D62C2);
+  static const Color budgetPurple = Color(0xFF8E44AD);
+  static const Color budgetPurpleLight = Color(0xFFF3E8FA);
 
-  // Dark Theme - Deep professional dark mode
-  static const Color darkBg = Color(0xFF121212);
-  static const Color darkSurface = Color(0xFF1E1E1E);
-  static const Color darkCard = Color(0xFF2C2C2C);
-  static const Color darkCardAlt = Color(0xFF3A3A3A);
-  static const Color darkBorder = Color(0xFF404040);
+  // Dark Theme
+  static const Color darkBg = Color(0xFF0E1512);
+  static const Color darkSurface = Color(0xFF16201B);
+  static const Color darkCard = Color(0xFF1E2B24);
+  static const Color darkCardAlt = Color(0xFF26362E);
+  static const Color darkBorder = Color(0xFF2E4036);
   static const Color darkTextPrimary = Color(0xFFFFFFFF);
   static const Color darkTextSecondary = Color(0xB3FFFFFF);
   static const Color darkTextTertiary = Color(0x80FFFFFF);
 
-  // Light Theme - Clean professional light mode
-  static const Color lightBg = Color(0xFFF8F9FA);
+  // Light Theme - Clean Mint-White
+  static const Color lightBg = Color(0xFFF7FAF8);
   static const Color lightSurface = Color(0xFFFFFFFF);
   static const Color lightCard = Color(0xFFFFFFFF);
-  static const Color lightCardAlt = Color(0xFFF0F1F3);
-  static const Color lightBorder = Color(0xFFE9ECEF);
-  static const Color lightTextPrimary = Color(0xFF212529);
-  static const Color lightTextSecondary = Color(0xFF6C757D);
-  static const Color lightTextTertiary = Color(0xFFADB5BD);
+  static const Color lightCardAlt = Color(0xFFF2F5F3);
+  static const Color lightBorder = Color(0xFFE7EFEA);
+  static const Color lightTextPrimary = Color(0xFF1A221E);
+  static const Color lightTextSecondary = Color(0xFF6B7871);
+  static const Color lightTextTertiary = Color(0xFF9AA7A0);
 
-  // Gradients - Modern gradient styles
-  static const List<Color> primaryGradient = [Color(0xFF00B4D8), Color(0xFF48CAE4)];
-  static const List<Color> incomeGradient = [Color(0xFF2ECC71), Color(0xFF58D68D)];
+  // Gradients
+  static List<Color> get primaryGradient => [primaryDark, primaryLight];
+  static const List<Color> incomeGradient = [Color(0xFF10A352), Color(0xFF28C76F)];
   static const List<Color> expenseGradient = [Color(0xFFE74C3C), Color(0xFFEC7063)];
-  static const List<Color> transferGradient = [Color(0xFF9B59B6), Color(0xFFAF7AC5)];
-  static const List<Color> purpleGradient = [Color(0xFF6C5CE7), Color(0xFFA29BFE)];
-  static const List<Color> goldGradient = [Color(0xFFF1C40F), Color(0xFFF4D03F)];
-  static const List<Color> darkCardGradient = [Color(0xFF1E1E1E), Color(0xFF2C2C2C)];
+  static const List<Color> transferGradient = [Color(0xFF2F80ED), Color(0xFF56CCF2)];
+  static const List<Color> purpleGradient = [Color(0xFF8E44AD), Color(0xFFBB6BD9)];
+  static const List<Color> goldGradient = [Color(0xFFF39C12), Color(0xFFF7DC6F)];
+  static const List<Color> darkCardGradient = [Color(0xFF16201B), Color(0xFF1E2B24)];
 
-  // Category Colors - Distinguishable professional palette
+  // Category Colors
   static const List<Color> categoryColors = [
-    Color(0xFF2ECC71),  // Green
-    Color(0xFF00B4D8),  // Blue
-    Color(0xFF9B59B6),  // Purple
-    Color(0xFFE74C3C),  // Red
-    Color(0xFFF1C40F),  // Yellow
-    Color(0xFFE67E22),  // Orange
-    Color(0xFF1ABC9C),  // Teal
-    Color(0xFF3498DB),  // Light Blue
-    Color(0xFF34495E),  // Dark Blue
-    Color(0xFF95A5A6),  // Gray
-    Color(0xFF16A085),  // Dark Teal
-    Color(0xFF8E44AD),  // Dark Purple
-    Color(0xFFD35400),  // Dark Orange
-    Color(0xFFC0392B),  // Dark Red
+    Color(0xFF10A352), // Emerald Green
+    Color(0xFFE74C3C), // Coral Red
+    Color(0xFF2F80ED), // Blue
+    Color(0xFF8E44AD), // Purple
+    Color(0xFFF39C12), // Amber
+    Color(0xFF16A085), // Teal
+    Color(0xFFE67E22), // Orange
+    Color(0xFF3498DB), // Sky Blue
+    Color(0xFF34495E), // Slate
+    Color(0xFF95A5A6), // Gray
+    Color(0xFF27AE60), // Green
+    Color(0xFF9B59B6), // Violet
+    Color(0xFFD35400), // Rust
+    Color(0xFFC0392B), // Crimson
   ];
 
   static Color fromHex(String hex) {
