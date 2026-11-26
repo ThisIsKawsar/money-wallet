@@ -43,7 +43,10 @@ class CsvTx {
 class CsvParseResult {
   final List<CsvTx> rows;
   final int skipped;
-  const CsvParseResult(this.rows, this.skipped);
+
+  /// "(=) Opening Balance" rows: account name -> amount (may be negative).
+  final Map<String, double> openings;
+  const CsvParseResult(this.rows, this.skipped, [this.openings = const {}]);
 }
 
 class ImportResult {
@@ -58,6 +61,9 @@ class DataTransfer {
   static const _uuid = Uuid();
   static const _backupTables = ['accounts', 'categories', 'transactions', 'budgets', 'goals'];
   static const _csvHeader = ['TIME', 'TYPE', 'AMOUNT', 'CATEGORY', 'ACCOUNT', 'NOTES'];
+
+  /// TYPE label of the per-account opening balance rows.
+  static const openingTypeLabel = '(=) Opening Balance';
 
   // ── Reload ───────────────────────────────────────────────────────────────
 
@@ -101,6 +107,29 @@ class DataTransfer {
     final b = StringBuffer()..writeln(_csvHeader.map(_quotedCell).join(','));
     final sorted = [...txs]..sort((a, c) => a.date.compareTo(c.date));
     final timeFmt = DateFormat('MMM dd, yyyy h:mm a', 'en_US');
+
+    // Opening balance = current balance minus what the transactions explain.
+    // Written first so re-importing the file reproduces the balances.
+    final net = <String, double>{};
+    for (final t in txs) {
+      addBalanceDelta(net, t.type, t.amount, t.accountId, t.toAccountId);
+    }
+    final openingTime = sorted.isEmpty
+        ? DateTime.now()
+        : sorted.first.date.subtract(const Duration(minutes: 1));
+    for (final a in accounts) {
+      final opening = a.balance - (net[a.id] ?? 0);
+      if (opening.abs() < 0.005) continue;
+      b.writeln([
+        timeFmt.format(openingTime),
+        openingTypeLabel,
+        opening.toStringAsFixed(2),
+        '  -  ',
+        a.name,
+        '',
+      ].map(_quotedCell).join(','));
+    }
+
     for (final t in sorted) {
       final fromAcc = accName[t.accountId] ?? '';
       final toAcc = t.toAccountId != null ? (accName[t.toAccountId] ?? '') : '';
@@ -307,8 +336,19 @@ class DataTransfer {
 
     String cell(List<String> r, int i) => i >= 0 && i < r.length ? r[i].trim() : '';
     final out = <CsvTx>[];
+    final openings = <String, double>{};
     var skipped = 0;
     for (final r in rows.skip(1)) {
+      if (cell(r, iType).toLowerCase().contains('opening')) {
+        final amount = double.tryParse(cell(r, iAmt).replaceAll(RegExp(r'[^0-9.\-]'), ''));
+        final acc = cell(r, iAcc);
+        if (amount == null || acc.isEmpty) {
+          skipped++;
+        } else {
+          openings[acc] = (openings[acc] ?? 0) + amount;
+        }
+        continue;
+      }
       final type = _parseType(cell(r, iType));
       final amount = double.tryParse(cell(r, iAmt).replaceAll(RegExp(r'[^0-9.\-]'), ''));
       final when = _parseDateTime(cell(r, iTime), cell(r, iDate));
@@ -340,7 +380,7 @@ class DataTransfer {
         note: note.isEmpty ? null : note,
       ));
     }
-    return CsvParseResult(out, skipped);
+    return CsvParseResult(out, skipped, openings);
   }
 
   /// Adds [t]'s effect on account balances to [delta].
@@ -361,7 +401,13 @@ class DataTransfer {
     final db = await DatabaseHelper.instance.database;
     final accounts = (await db.query('accounts')).map(AccountModel.fromMap).toList();
     final categories = (await db.query('categories')).map(CategoryModel.fromMap).toList();
-    final existing = (await db.query('transactions')).map(TransactionModel.fromMap).toList();
+    final existing = await DatabaseHelper.instance.getTransactions();
+    // Accounts that already have history keep their balance: an opening
+    // balance is only applied to accounts with no transactions yet, so
+    // importing the same file twice does not add it twice.
+    final usedAccounts = {
+      for (final t in existing) ...[t.accountId, if (t.toAccountId != null) t.toAccountId!],
+    };
     String key(DateTime d, TransactionType type, double amount, String? note) =>
         '${DateFormat('yyyy-MM-dd HH:mm').format(d)}|${type.name}|${amount.toStringAsFixed(2)}|${note ?? ''}';
     final seen = {for (final t in existing) key(t.date, t.type, t.amount, t.note)};
@@ -421,6 +467,12 @@ class DataTransfer {
       await db.insert('transactions', tx.toMap());
       added++;
       addBalanceDelta(balanceDelta, r.type, r.amount, from, to);
+    }
+
+    for (final o in parsed.openings.entries) {
+      final id = await accountId(o.key);
+      if (usedAccounts.contains(id)) continue;
+      balanceDelta[id] = (balanceDelta[id] ?? 0) + o.value;
     }
 
     for (final e in balanceDelta.entries) {

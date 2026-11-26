@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import 'package:cashpilot/data/models/transaction_model.dart';
@@ -161,7 +162,16 @@ class DatabaseHelper {
   Future<List<TransactionModel>> getTransactions() async {
     final db = await database;
     final rows = await db.query('transactions', orderBy: 'date DESC');
-    return rows.map(TransactionModel.fromMap).toList();
+    // One malformed row must not hide every other transaction.
+    final out = <TransactionModel>[];
+    for (final r in rows) {
+      try {
+        out.add(TransactionModel.fromMap(r));
+      } catch (e) {
+        debugPrint('Skipping unreadable transaction ${r['id']}: $e');
+      }
+    }
+    return out;
   }
 
   Future<void> updateTransaction(TransactionModel t) async {

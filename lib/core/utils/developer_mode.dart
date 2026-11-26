@@ -10,12 +10,16 @@ class DeveloperMode {
   static Future<void> set(BuildContext context, bool enabled) async {
     final settings = context.read<SettingsProvider>();
     final reload = DataTransfer.reloader(context);
-    if (enabled) {
-      await DemoData.seed();
-    } else {
-      await DemoData.clear();
+    try {
+      if (enabled) {
+        await DemoData.seed();
+      } else {
+        await DemoData.clear();
+      }
+      await settings.setDeveloperMode(enabled);
+    } finally {
+      // Refresh screens even if seeding failed part-way.
+      await reload();
     }
-    await settings.setDeveloperMode(enabled);
-    await reload();
   }
 }

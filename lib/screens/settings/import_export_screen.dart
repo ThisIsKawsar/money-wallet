@@ -236,6 +236,8 @@ class _ImportExportScreenState extends State<ImportExportScreen> {
               name: 'TYPE',
               desc: 'One of the three transaction types.',
               examples: ['(+) Income', '(-) Expense', '(*) Transfer'],
+              note: 'Optional: "(=) Opening Balance" sets the starting amount of the '
+                  'account in ACCOUNT (one row per account, can be negative).',
             ),
             _ColumnRow(
               name: 'AMOUNT',
@@ -279,8 +281,10 @@ class _ImportExportScreenState extends State<ImportExportScreen> {
           children: const [
             _Bullet('A CSV exported from CashPilot can be imported back as is. Both use the same format.'),
             _Bullet('Account balances are updated from the imported income, expenses and transfers.'),
-            _Bullet('A CSV has no opening balances, so accounts can show a minus balance after import. '
-                'Fix it by editing the account and entering its real Current Balance.'),
+            _Bullet('Opening Balance rows set where each account starts. They are only applied to '
+                'accounts that have no transactions yet, so they are never added twice.'),
+            _Bullet('A CSV from another app usually has no opening balances, so accounts can show a '
+                'minus balance after import. Fix it by editing the account and entering its real Current Balance.'),
             _Bullet('Rows that already exist (same time, type, amount and note) are skipped, so importing the same file twice is safe.'),
             _Bullet('Rows with an unknown type, a missing amount or an unreadable time are skipped.'),
             _Bullet('A .json backup restores accounts, categories, transactions, budgets and goals.'),
@@ -323,7 +327,8 @@ class _ImportExportScreenState extends State<ImportExportScreen> {
         padding: const EdgeInsets.fromLTRB(16, 14, 16, 6),
         child: Column(
           children: const [
-            _Bullet('One row per transaction, oldest first.'),
+            _Bullet('Starts with one "(=) Opening Balance" row per account that has money not '
+                'explained by its transactions, then one row per transaction, oldest first.'),
             _Bullet('TYPE is (+) Income, (-) Expense or (*) Transfer.'),
             _Bullet('Transfers show the accounts as From->To and "  -  " as the category.'),
             _Bullet('Use the Import tab to bring this file back into CashPilot on any device.'),

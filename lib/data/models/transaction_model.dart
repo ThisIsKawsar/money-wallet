@@ -63,7 +63,7 @@ class TransactionModel {
       note: map['note'] as String?,
       paymentMethod: map['paymentMethod'] as String?,
       attachmentPath: map['attachmentPath'] as String?,
-      isRecurring: (map['isRecurring'] as int) == 1,
+      isRecurring: map['isRecurring'] == 1 || map['isRecurring'] == true,
       recurringFrequency: map['recurringFrequency'] as String?,
       createdAt: DateTime.parse(map['createdAt'] as String),
     );

@@ -68,20 +68,29 @@ class _AboutScreenState extends State<AboutScreen> {
       );
       if (ok != true || !mounted) return;
     }
+    if (await _run(on)) {
+      if (!mounted) return;
+      showToast(context, on ? 'Demo data loaded — explore the app!' : 'Demo data removed',
+          icon: on ? Icons.auto_awesome_rounded : Icons.cleaning_services_rounded);
+    }
+  }
+
+  /// Runs [DeveloperMode.set]; shows the error instead of failing silently.
+  Future<bool> _run(bool on) async {
     setState(() => _busy = true);
-    await DeveloperMode.set(context, on);
-    if (!mounted) return;
-    setState(() => _busy = false);
-    showToast(context, on ? 'Demo data loaded — explore the app!' : 'Demo data removed',
-        icon: on ? Icons.auto_awesome_rounded : Icons.cleaning_services_rounded);
+    try {
+      await DeveloperMode.set(context, on);
+      return true;
+    } catch (e) {
+      if (mounted) showToast(context, 'Could not ${on ? 'load' : 'remove'} demo data: $e', error: true);
+      return false;
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 
   Future<void> _reseed() async {
-    setState(() => _busy = true);
-    await DeveloperMode.set(context, true);
-    if (!mounted) return;
-    setState(() => _busy = false);
-    showToast(context, 'Demo data refreshed');
+    if (await _run(true) && mounted) showToast(context, 'Demo data refreshed');
   }
 
   @override

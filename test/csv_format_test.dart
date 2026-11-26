@@ -60,4 +60,26 @@ void main() {
     expect(res.rows[1].account, 'IB Card');
     expect(res.rows[1].toAccount, 'Cash');
   });
+
+  test('export writes opening balances and the parser reads them back', () {
+    final now = DateTime(2026, 11, 25, 19, 47);
+    // Cash has 1000 not explained by transactions; IB Card is fully explained.
+    final accs = [
+      AccountModel(id: 'a', name: 'IB Card', type: AccountType.bank, icon: 'x', color: '#000', balance: -500, createdAt: now),
+      AccountModel(id: 'b', name: 'Cash', type: AccountType.cash, icon: 'x', color: '#000', balance: 1350, createdAt: now),
+    ];
+    final cats = [CategoryModel(id: 'c', name: 'O Food', icon: 'x', color: '#000', type: CategoryType.expense)];
+    final csv = DataTransfer.buildCsv([
+      TransactionModel(id: '1', type: TransactionType.expense, amount: 150, categoryId: 'c', accountId: 'b', date: now, createdAt: now),
+      TransactionModel(id: '2', type: TransactionType.transfer, amount: 500, categoryId: 'transfer', accountId: 'a', toAccountId: 'b', date: now, createdAt: now),
+    ], accs, cats);
+    final lines = csv.trim().split('\n');
+    expect(lines[1], '"Nov 25, 2026 7:46 PM","(=) Opening Balance","1000.00","  -  ","Cash",""');
+    expect(lines.length, 4); // header + 1 opening + 2 transactions
+
+    final res = DataTransfer.parseTransactionsCsv(csv);
+    expect(res.skipped, 0);
+    expect(res.rows.length, 2);
+    expect(res.openings, {'Cash': 1000.0});
+  });
 }
