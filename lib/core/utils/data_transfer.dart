@@ -20,6 +20,32 @@ import 'package:cashpilot/providers/goal_provider.dart';
 import 'package:cashpilot/providers/settings_provider.dart';
 import 'package:cashpilot/providers/transaction_provider.dart';
 
+/// One transaction row read from a CSV file (names, not ids).
+class CsvTx {
+  final TransactionType type;
+  final double amount;
+  final DateTime date;
+  final String category; // empty for transfers
+  final String account; // source account for transfers
+  final String? toAccount;
+  final String? note;
+  const CsvTx({
+    required this.type,
+    required this.amount,
+    required this.date,
+    required this.category,
+    required this.account,
+    this.toAccount,
+    this.note,
+  });
+}
+
+class CsvParseResult {
+  final List<CsvTx> rows;
+  final int skipped;
+  const CsvParseResult(this.rows, this.skipped);
+}
+
 class ImportResult {
   final int added;
   final int skipped;
@@ -92,6 +118,25 @@ class DataTransfer {
         accountCol,
         t.note ?? '',
       ].map(_quotedCell).join(','));
+    }
+    return b.toString();
+  }
+
+  /// Column names of the transactions CSV (same for export and import).
+  static List<String> get csvColumns => List.unmodifiable(_csvHeader);
+
+  /// A ready-to-fill import template in exactly the export format, with one
+  /// example row per transaction type.
+  static String buildTemplateCsv() {
+    const samples = [
+      ['Nov 01, 2026 9:00 AM', '(+) Income', '30000.00', 'Salary', 'Bank', ''],
+      ['Nov 01, 2026 1:30 PM', '(-) Expense', '120.00', 'Food', 'Cash', 'lunch'],
+      ['Nov 02, 2026 7:45 PM', '(*) Transfer', '1000.00', '  -  ', 'Bank->Cash', ''],
+      ['Nov 03, 2026 8:15 PM', '(-) Expense', '525.00', 'Bills', 'Bank', 'internet'],
+    ];
+    final b = StringBuffer()..writeln(_csvHeader.map(_quotedCell).join(','));
+    for (final r in samples) {
+      b.writeln(r.map(_quotedCell).join(','));
     }
     return b.toString();
   }
@@ -243,8 +288,11 @@ class DataTransfer {
     return d;
   }
 
-  static Future<ImportResult> _importCsv(String text) async {
-    final rows = _parseCsv(text);
+  /// Parses a transactions CSV (the export format) into rows. Rows with an
+  /// unknown type, bad amount, unreadable time or a transfer without a
+  /// destination are counted in [CsvParseResult.skipped].
+  static CsvParseResult parseTransactionsCsv(String text) {
+    final rows = _parseCsv(text.replaceFirst('﻿', ''));
     if (rows.length < 2) throw const FormatException('The CSV file has no rows');
     final header = rows.first.map((h) => h.trim().toLowerCase()).toList();
     int col(String name) => header.indexOf(name);
@@ -257,18 +305,68 @@ class DataTransfer {
       throw const FormatException('CSV needs TIME/DATE, TYPE and AMOUNT columns');
     }
 
+    String cell(List<String> r, int i) => i >= 0 && i < r.length ? r[i].trim() : '';
+    final out = <CsvTx>[];
+    var skipped = 0;
+    for (final r in rows.skip(1)) {
+      final type = _parseType(cell(r, iType));
+      final amount = double.tryParse(cell(r, iAmt).replaceAll(RegExp(r'[^0-9.\-]'), ''));
+      final when = _parseDateTime(cell(r, iTime), cell(r, iDate));
+      if (type == null || amount == null || amount <= 0 || when == null) {
+        skipped++;
+        continue;
+      }
+      final note = cell(r, iNote);
+      final accRaw = cell(r, iAcc);
+      var fromName = accRaw;
+      var toName = cell(r, iTo);
+      if (type == TransactionType.transfer && accRaw.contains('->')) {
+        final parts = accRaw.split('->');
+        fromName = parts[0].trim();
+        if (parts.length > 1) toName = parts[1].trim();
+      }
+      if (type == TransactionType.transfer && toName.isEmpty) {
+        skipped++;
+        continue;
+      }
+      final rawCat = cell(r, iCat);
+      out.add(CsvTx(
+        type: type,
+        amount: amount,
+        date: when,
+        category: type == TransactionType.transfer || rawCat == '-' ? '' : rawCat,
+        account: fromName,
+        toAccount: type == TransactionType.transfer ? toName : null,
+        note: note.isEmpty ? null : note,
+      ));
+    }
+    return CsvParseResult(out, skipped);
+  }
+
+  /// Adds [t]'s effect on account balances to [delta].
+  static void addBalanceDelta(Map<String, double> delta, TransactionType type, double amount, String from, String? to) {
+    switch (type) {
+      case TransactionType.income:
+        delta[from] = (delta[from] ?? 0) + amount;
+      case TransactionType.expense:
+        delta[from] = (delta[from] ?? 0) - amount;
+      case TransactionType.transfer:
+        delta[from] = (delta[from] ?? 0) - amount;
+        if (to != null) delta[to] = (delta[to] ?? 0) + amount;
+    }
+  }
+
+  static Future<ImportResult> _importCsv(String text) async {
+    final parsed = parseTransactionsCsv(text);
     final db = await DatabaseHelper.instance.database;
     final accounts = (await db.query('accounts')).map(AccountModel.fromMap).toList();
     final categories = (await db.query('categories')).map(CategoryModel.fromMap).toList();
     final existing = (await db.query('transactions')).map(TransactionModel.fromMap).toList();
-    final seen = {
-      for (final t in existing)
-        '${DateFormat('yyyy-MM-dd HH:mm').format(t.date)}|${t.type.name}|${t.amount.toStringAsFixed(2)}|${t.note ?? ''}'
-    };
+    String key(DateTime d, TransactionType type, double amount, String? note) =>
+        '${DateFormat('yyyy-MM-dd HH:mm').format(d)}|${type.name}|${amount.toStringAsFixed(2)}|${note ?? ''}';
+    final seen = {for (final t in existing) key(t.date, t.type, t.amount, t.note)};
     final balanceDelta = <String, double>{};
-    var added = 0, skipped = 0;
-
-    String cell(List<String> r, int i) => i >= 0 && i < r.length ? r[i].trim() : '';
+    var added = 0, skipped = parsed.skipped;
 
     Future<String> accountId(String name) async {
       final n = name.isEmpty ? 'Imported' : name;
@@ -298,68 +396,31 @@ class DataTransfer {
       return c.id;
     }
 
-    for (final r in rows.skip(1)) {
-      final type = _parseType(cell(r, iType));
-      final amount = double.tryParse(cell(r, iAmt).replaceAll(RegExp(r'[^0-9.\-]'), ''));
-      final when = _parseDateTime(cell(r, iTime), cell(r, iDate));
-      if (type == null || amount == null || amount <= 0 || when == null) {
+    for (final r in parsed.rows) {
+      final k = key(r.date, r.type, r.amount, r.note);
+      if (!seen.add(k)) {
         skipped++;
         continue;
       }
-      final rawNote = iNote >= 0 && iNote < r.length ? r[iNote].trim() : '';
-      final note = rawNote.isEmpty ? null : rawNote;
-      final key = '${DateFormat('yyyy-MM-dd HH:mm').format(when)}|${type.name}|${amount.toStringAsFixed(2)}|${note ?? ''}';
-      if (seen.contains(key)) {
-        skipped++;
-        continue;
-      }
-      seen.add(key);
-
-      final accRaw = cell(r, iAcc);
-      String fromName = accRaw;
-      String toName = cell(r, iTo);
-      if (type == TransactionType.transfer && accRaw.contains('->')) {
-        final parts = accRaw.split('->');
-        fromName = parts[0].trim();
-        if (parts.length > 1) toName = parts[1].trim();
-      }
-
-      final from = await accountId(fromName);
-      String? to;
-      String catId;
-      if (type == TransactionType.transfer) {
-        if (toName.isEmpty) {
-          skipped++;
-          continue;
-        }
-        to = await accountId(toName);
-        catId = 'transfer';
-      } else {
-        catId = await categoryId(
-            cell(r, iCat), type == TransactionType.income ? CategoryType.income : CategoryType.expense);
-      }
+      final from = await accountId(r.account);
+      final to = r.toAccount != null ? await accountId(r.toAccount!) : null;
+      final catId = r.type == TransactionType.transfer
+          ? 'transfer'
+          : await categoryId(r.category, r.type == TransactionType.income ? CategoryType.income : CategoryType.expense);
       final tx = TransactionModel(
         id: _uuid.v4(),
-        type: type,
-        amount: amount,
+        type: r.type,
+        amount: r.amount,
         categoryId: catId,
         accountId: from,
         toAccountId: to,
-        date: when,
-        note: note,
+        date: r.date,
+        note: r.note,
         createdAt: DateTime.now(),
       );
       await db.insert('transactions', tx.toMap());
       added++;
-      switch (type) {
-        case TransactionType.income:
-          balanceDelta[from] = (balanceDelta[from] ?? 0) + amount;
-        case TransactionType.expense:
-          balanceDelta[from] = (balanceDelta[from] ?? 0) - amount;
-        case TransactionType.transfer:
-          balanceDelta[from] = (balanceDelta[from] ?? 0) - amount;
-          balanceDelta[to!] = (balanceDelta[to] ?? 0) + amount;
-      }
+      addBalanceDelta(balanceDelta, r.type, r.amount, from, to);
     }
 
     for (final e in balanceDelta.entries) {

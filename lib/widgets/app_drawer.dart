@@ -4,10 +4,6 @@ import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cashpilot/core/theme/app_colors.dart';
 import 'package:cashpilot/core/constants/app_constants.dart';
-import 'package:cashpilot/core/utils/data_transfer.dart';
-import 'package:cashpilot/providers/transaction_provider.dart';
-import 'package:cashpilot/providers/account_provider.dart';
-import 'package:cashpilot/providers/category_provider.dart';
 import 'package:cashpilot/providers/settings_provider.dart';
 import 'package:cashpilot/screens/passcode/passcode_screen.dart';
 import 'package:cashpilot/widgets/cashpilot_logo.dart';
@@ -131,9 +127,8 @@ class AppDrawer extends StatelessWidget {
               label: 'Export Data',
               isDark: isDark,
               onTap: () {
-                final nav = Navigator.of(context);
-                nav.pop();
-                _showExportDialog(nav.context);
+                Navigator.pop(context);
+                context.push('/settings/data?tab=export');
               },
             ),
             _DrawerTile(
@@ -141,9 +136,8 @@ class AppDrawer extends StatelessWidget {
               label: 'Import Data',
               isDark: isDark,
               onTap: () {
-                final nav = Navigator.of(context);
-                nav.pop();
-                _showImportDialog(nav.context);
+                Navigator.pop(context);
+                context.push('/settings/data');
               },
             ),
             const Divider(height: 16),
@@ -198,130 +192,6 @@ class AppDrawer extends StatelessWidget {
               ? AppColors.darkTextTertiary
               : AppColors.lightTextSecondary,
         ),
-      ),
-    );
-  }
-
-  void _showExportDialog(BuildContext context) {
-    final txp = context.read<TransactionProvider>();
-    final accs = context.read<AccountProvider>().accounts;
-    final cats = context.read<CategoryProvider>().categories;
-    final size = MediaQuery.of(context).size;
-    final origin = Rect.fromCenter(
-        center: Offset(size.width / 2, size.height / 2), width: 2, height: 2);
-
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Export Data'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading:
-                  const Icon(Icons.table_chart_rounded, color: AppColors.income),
-              title: const Text('Export CSV'),
-              subtitle: const Text('Open in Excel, Numbers or Sheets'),
-              onTap: () async {
-                Navigator.pop(ctx);
-                if (txp.transactions.isEmpty) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('No transactions to export'),
-                      backgroundColor: AppColors.expense,
-                    ),
-                  );
-                  return;
-                }
-                await DataTransfer.shareFile(
-                  'cashpilot_transactions_${DataTransfer.stamp()}.csv',
-                  DataTransfer.buildCsv(txp.transactions, accs, cats),
-                  origin: origin,
-                  text: 'CashPilot transactions',
-                );
-              },
-            ),
-            ListTile(
-              leading:
-                  const Icon(Icons.backup_rounded, color: AppColors.transfer),
-              title: const Text('Full Backup (JSON)'),
-              subtitle:
-                  const Text('Accounts, categories, transactions & budgets'),
-              onTap: () async {
-                Navigator.pop(ctx);
-                await DataTransfer.shareFile(
-                  'cashpilot_backup_${DataTransfer.stamp()}.json',
-                  await DataTransfer.buildBackupJson(),
-                  origin: origin,
-                  text: 'CashPilot backup',
-                );
-              },
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showImportDialog(BuildContext context) {
-    final reload = DataTransfer.reloader(context);
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Import Data'),
-        content: const Text(
-          '• Choose a CSV file ("TIME","TYPE","AMOUNT","CATEGORY","ACCOUNT","NOTES") to import transactions.\n'
-          '• Or choose a CashPilot backup (.json) to restore all data.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton.icon(
-            onPressed: () async {
-              Navigator.pop(ctx);
-              try {
-                final res = await DataTransfer.pickAndImport();
-                if (res == null) return;
-                await reload();
-                if (!context.mounted) return;
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      res.kind == 'backup'
-                          ? 'Backup restored · ${res.added} transactions'
-                          : 'Imported ${res.added} transactions${res.skipped > 0 ? ' · ${res.skipped} skipped' : ''}',
-                    ),
-                    backgroundColor: AppColors.primary,
-                  ),
-                );
-              } catch (e) {
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(
-                          e is FormatException ? e.message : 'Import failed: $e'),
-                      backgroundColor: AppColors.expense,
-                    ),
-                  );
-                }
-              }
-            },
-            icon: const Icon(Icons.folder_open_rounded),
-            label: const Text('Choose File'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.primary,
-              foregroundColor: Colors.white,
-            ),
-          ),
-        ],
       ),
     );
   }

@@ -76,7 +76,8 @@ class _CategoryManagementScreenState extends State<CategoryManagementScreen> {
             ...catProvider.incomeCategories.map((c) => _CategoryRow(
                   category: c,
                   isDark: isDark,
-                  onDelete: () => catProvider.deleteCategory(c.id),
+                  onEdit: () => _showCategoryDialog(context, catProvider, existing: c),
+                  onDelete: () => _confirmDelete(context, catProvider, c),
                 )),
 
             const SizedBox(height: 18),
@@ -95,7 +96,8 @@ class _CategoryManagementScreenState extends State<CategoryManagementScreen> {
             ...catProvider.expenseCategories.map((c) => _CategoryRow(
                   category: c,
                   isDark: isDark,
-                  onDelete: () => catProvider.deleteCategory(c.id),
+                  onEdit: () => _showCategoryDialog(context, catProvider, existing: c),
+                  onDelete: () => _confirmDelete(context, catProvider, c),
                 )),
           ],
         ),
@@ -103,18 +105,58 @@ class _CategoryManagementScreenState extends State<CategoryManagementScreen> {
     );
   }
 
+  Future<void> _confirmDelete(
+    BuildContext context,
+    CategoryProvider catProvider,
+    CategoryModel cat,
+  ) async {
+    await showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete Category'),
+        content: Text('Delete "${cat.name}"?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              await catProvider.deleteCategory(cat.id);
+              if (ctx.mounted) Navigator.pop(ctx);
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.expense,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _showAddCategory(
-      BuildContext context, CategoryProvider catProvider) async {
-    final nameCtrl = TextEditingController();
-    String selectedType = 'expense';
-    String selectedIcon = AppIcons.availableIcons.first['name'] as String;
-    Color selectedColor = AppColors.categoryColors.first;
+      BuildContext context, CategoryProvider catProvider) =>
+      _showCategoryDialog(context, catProvider);
+
+  Future<void> _showCategoryDialog(
+    BuildContext context,
+    CategoryProvider catProvider, {
+    CategoryModel? existing,
+  }) async {
+    final nameCtrl = TextEditingController(text: existing?.name ?? '');
+    String selectedType = existing != null ? existing.type.name : 'expense';
+    String selectedIcon = existing?.icon ?? AppIcons.availableIcons.first['name'] as String;
+    Color selectedColor = existing != null
+        ? AppColors.fromHex(existing.color)
+        : AppColors.categoryColors.first;
 
     await showDialog(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setS) => AlertDialog(
-          title: const Text('New Category'),
+          title: Text(existing == null ? 'New Category' : 'Edit Category'),
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -209,18 +251,30 @@ class _CategoryManagementScreenState extends State<CategoryManagementScreen> {
                 if (name.isEmpty) return;
                 final hex =
                     '#${selectedColor.toARGB32().toRadixString(16).substring(2)}';
-                await catProvider.addCategory(
-                  CategoryModel(
-                    id: '',
-                    name: name,
-                    icon: selectedIcon,
-                    color: hex,
-                    type: selectedType == 'income'
-                        ? CategoryType.income
-                        : CategoryType.expense,
-                    isCustom: true,
-                  ),
-                );
+                final newType = selectedType == 'income'
+                    ? CategoryType.income
+                    : CategoryType.expense;
+                if (existing != null) {
+                  await catProvider.updateCategory(
+                    existing.copyWith(
+                      name: name,
+                      icon: selectedIcon,
+                      color: hex,
+                      type: newType,
+                    ),
+                  );
+                } else {
+                  await catProvider.addCategory(
+                    CategoryModel(
+                      id: '',
+                      name: name,
+                      icon: selectedIcon,
+                      color: hex,
+                      type: newType,
+                      isCustom: true,
+                    ),
+                  );
+                }
                 if (ctx.mounted) Navigator.pop(ctx);
               },
               style: ElevatedButton.styleFrom(
@@ -239,11 +293,13 @@ class _CategoryManagementScreenState extends State<CategoryManagementScreen> {
 class _CategoryRow extends StatelessWidget {
   final CategoryModel category;
   final bool isDark;
+  final VoidCallback onEdit;
   final VoidCallback onDelete;
 
   const _CategoryRow({
     required this.category,
     required this.isDark,
+    required this.onEdit,
     required this.onDelete,
   });
 
@@ -260,6 +316,7 @@ class _CategoryRow extends StatelessWidget {
         ),
       ),
       child: ListTile(
+        onTap: onEdit,
         dense: true,
         contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
         leading: Container(
@@ -286,9 +343,11 @@ class _CategoryRow extends StatelessWidget {
         trailing: PopupMenuButton<String>(
           icon: const Icon(Icons.more_horiz_rounded, size: 20),
           onSelected: (v) {
+            if (v == 'edit') onEdit();
             if (v == 'delete') onDelete();
           },
           itemBuilder: (_) => const [
+            PopupMenuItem(value: 'edit', child: Text('Edit')),
             PopupMenuItem(value: 'delete', child: Text('Delete')),
           ],
         ),

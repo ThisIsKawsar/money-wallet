@@ -203,8 +203,6 @@ class _AccountsScreenState extends State<AccountsScreen> {
                       currencySymbol: settings.currencySymbol,
                       isDark: isDark,
                       onTap: () => context.push('/accounts/${acc.id}'),
-                      onTransfer: () => context.push('/transfer'),
-                      onDelete: () => accProvider.deleteAccount(acc.id),
                     )),
               ],
             ),
@@ -217,16 +215,12 @@ class _AccountCard extends StatelessWidget {
   final String currencySymbol;
   final bool isDark;
   final VoidCallback onTap;
-  final VoidCallback onTransfer;
-  final VoidCallback onDelete;
 
   const _AccountCard({
     required this.account,
     required this.currencySymbol,
     required this.isDark,
     required this.onTap,
-    required this.onTransfer,
-    required this.onDelete,
   });
 
   @override
@@ -275,18 +269,11 @@ class _AccountCard extends StatelessWidget {
             color: account.balance < 0 ? AppColors.expense : AppColors.income,
           ),
         ),
-        trailing: PopupMenuButton<String>(
-          icon: const Icon(Icons.more_horiz_rounded),
-          onSelected: (v) {
-            if (v == 'details') onTap();
-            if (v == 'transfer') onTransfer();
-            if (v == 'delete') onDelete();
-          },
-          itemBuilder: (_) => const [
-            PopupMenuItem(value: 'details', child: Text('View Details')),
-            PopupMenuItem(value: 'transfer', child: Text('Transfer Money')),
-            PopupMenuItem(value: 'delete', child: Text('Delete')),
-          ],
+        trailing: Icon(
+          Icons.chevron_right_rounded,
+          color: isDark
+              ? AppColors.darkTextTertiary
+              : AppColors.lightTextTertiary,
         ),
       ),
     );

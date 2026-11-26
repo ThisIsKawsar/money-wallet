@@ -17,6 +17,7 @@ import 'package:cashpilot/screens/passcode/passcode_screen.dart';
 import 'package:cashpilot/screens/onboarding/onboarding_screen.dart';
 import 'package:cashpilot/screens/calendar/calendar_screen.dart';
 import 'package:cashpilot/screens/settings/about_screen.dart';
+import 'package:cashpilot/screens/settings/import_export_screen.dart';
 import 'package:cashpilot/widgets/main_shell.dart';
 
 final _rootNavKey = GlobalKey<NavigatorState>();
@@ -104,6 +105,13 @@ GoRouter createRouter({String initialLocation = '/'}) {
         path: '/settings/about',
         parentNavigatorKey: _rootNavKey,
         builder: (context, state) => const AboutScreen(),
+      ),
+      GoRoute(
+        path: '/settings/data',
+        parentNavigatorKey: _rootNavKey,
+        builder: (context, state) => ImportExportScreen(
+          initialTab: state.uri.queryParameters['tab'] == 'export' ? 1 : 0,
+        ),
       ),
       GoRoute(
         path: '/accounts/:id',

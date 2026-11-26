@@ -2,12 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 import 'package:cashpilot/providers/settings_provider.dart';
-import 'package:cashpilot/providers/transaction_provider.dart';
-import 'package:cashpilot/providers/account_provider.dart';
-import 'package:cashpilot/providers/category_provider.dart';
 import 'package:cashpilot/core/theme/app_colors.dart';
 import 'package:cashpilot/core/constants/app_constants.dart';
-import 'package:cashpilot/core/utils/data_transfer.dart';
 import 'package:cashpilot/screens/passcode/passcode_screen.dart';
 import 'package:cashpilot/widgets/cashpilot_logo.dart';
 import 'package:cashpilot/widgets/wavy_background.dart';
@@ -90,13 +86,13 @@ class SettingsScreen extends StatelessWidget {
                 icon: Icons.upload_file_rounded,
                 title: 'Export Data',
                 subtitle: 'CSV spreadsheet or full backup',
-                onTap: () => _showExport(context),
+                onTap: () => context.push('/settings/data?tab=export'),
               ),
               _Tile(
                 icon: Icons.download_rounded,
                 title: 'Import Data',
-                subtitle: 'Restore a backup or import a CSV',
-                onTap: () => _showImport(context),
+                subtitle: 'CSV template, instructions & backup restore',
+                onTap: () => context.push('/settings/data'),
               ),
               const SizedBox(height: 14),
 
@@ -149,184 +145,6 @@ class SettingsScreen extends StatelessWidget {
     } else {
       context.push('/passcode-lock', extra: {'mode': PasscodeMode.setup});
     }
-  }
-
-  // ── Export ─────────────────────────────────────────────────────────────
-
-  Rect _shareOrigin(BuildContext context) {
-    final size = MediaQuery.of(context).size;
-    return Rect.fromCenter(center: Offset(size.width / 2, size.height / 2), width: 2, height: 2);
-  }
-
-  void _showExport(BuildContext context) {
-    final txp = context.read<TransactionProvider>();
-    final accs = context.read<AccountProvider>().accounts;
-    final cats = context.read<CategoryProvider>().categories;
-    final origin = _shareOrigin(context);
-
-    Future<void> run(BuildContext sheetCtx, Future<void> Function() job) async {
-      Navigator.pop(sheetCtx);
-      try {
-        await job();
-      } catch (e) {
-        if (context.mounted) showToast(context, 'Export failed: $e', error: true);
-      }
-    }
-
-    showAppSheet(
-      context,
-      builder: (ctx) => Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text('Export Data', style: jakarta(20, weight: FontWeight.w800, color: ctx.textPrimary)),
-          const SizedBox(height: 4),
-          Text('${txp.transactions.length} transactions · ${accs.length} accounts',
-              style: jakarta(13, color: ctx.textSecondary)),
-          const SizedBox(height: 16),
-          _OptionCard(
-            icon: Icons.table_chart_rounded,
-            color: AppColors.income,
-            title: 'Spreadsheet (CSV)',
-            subtitle: 'Open in Excel, Numbers or Google Sheets',
-            onTap: () => run(ctx, () async {
-              if (txp.transactions.isEmpty) {
-                if (context.mounted) showToast(context, 'No transactions to export', error: true);
-                return;
-              }
-              await DataTransfer.shareFile(
-                'cashpilot_transactions_${DataTransfer.stamp()}.csv',
-                DataTransfer.buildCsv(txp.transactions, accs, cats),
-                origin: origin,
-                text: 'CashPilot transactions',
-              );
-            }),
-          ),
-          const SizedBox(height: 10),
-          _OptionCard(
-            icon: Icons.backup_rounded,
-            color: AppColors.transfer,
-            title: 'Full Backup (JSON)',
-            subtitle: 'Accounts, categories, transactions, budgets & goals',
-            onTap: () => run(ctx, () async {
-              await DataTransfer.shareFile(
-                'cashpilot_backup_${DataTransfer.stamp()}.json',
-                await DataTransfer.buildBackupJson(),
-                origin: origin,
-                text: 'CashPilot backup',
-              );
-            }),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ── Import ─────────────────────────────────────────────────────────────
-
-  void _showImport(BuildContext context) {
-    final reload = DataTransfer.reloader(context);
-    showAppSheet(
-      context,
-      builder: (ctx) => Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text('Import Data', style: jakarta(20, weight: FontWeight.w800, color: ctx.textPrimary)),
-          const SizedBox(height: 12),
-          _Bullet('A CashPilot backup (.json) restores everything it contains.'),
-          _Bullet('A CSV with Date, Type, Category, Account, Amount, Note columns adds transactions. '
-              'Missing accounts/categories are created and balances updated.'),
-          _Bullet('Rows that already exist are skipped, so importing twice is safe.'),
-          const SizedBox(height: 18),
-          GradientButton(
-            label: 'Choose File',
-            trailingIcon: Icons.folder_open_rounded,
-            onPressed: () async {
-              Navigator.pop(ctx);
-              try {
-                final res = await DataTransfer.pickAndImport();
-                if (res == null) return;
-                await reload();
-                if (!context.mounted) return;
-                showToast(
-                  context,
-                  res.kind == 'backup'
-                      ? 'Backup restored · ${res.added} transactions'
-                      : 'Imported ${res.added} transactions${res.skipped > 0 ? ' · ${res.skipped} skipped' : ''}',
-                );
-              } catch (e) {
-                if (context.mounted) {
-                  showToast(context, e is FormatException ? e.message : 'Import failed: $e', error: true);
-                }
-              }
-            },
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _Bullet extends StatelessWidget {
-  final String text;
-  const _Bullet(this.text);
-
-  @override
-  Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.only(bottom: 8),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding(
-              padding: const EdgeInsets.only(top: 6),
-              child: Icon(Icons.circle, size: 6, color: AppColors.primary),
-            ),
-            const SizedBox(width: 10),
-            Expanded(child: Text(text, style: jakarta(13.5, color: context.textSecondary, height: 1.45))),
-          ],
-        ),
-      );
-}
-
-class _OptionCard extends StatelessWidget {
-  final IconData icon;
-  final Color color;
-  final String title;
-  final String subtitle;
-  final VoidCallback onTap;
-
-  const _OptionCard({
-    required this.icon,
-    required this.color,
-    required this.title,
-    required this.subtitle,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return SoftCard(
-      shadow: false,
-      radius: 18,
-      padding: const EdgeInsets.all(14),
-      onTap: onTap,
-      child: Row(
-        children: [
-          GlossyIcon(icon: icon, color: color, size: 46),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title, style: jakarta(15, weight: FontWeight.w700, color: context.textPrimary)),
-                const SizedBox(height: 2),
-                Text(subtitle, style: jakarta(12.5, color: context.textSecondary)),
-              ],
-            ),
-          ),
-          Icon(Icons.chevron_right_rounded, color: context.textTertiary),
-        ],
-      ),
-    );
   }
 }
 

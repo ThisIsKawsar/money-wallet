@@ -4,7 +4,8 @@ import 'package:uuid/uuid.dart';
 class SeedData {
   static const _uuid = Uuid();
 
-  /// Default category look (name -> [icon, color]); used by the v2 migration.
+  /// Legacy default category look (name -> [icon, color]); used only by the
+  /// v2 migration for databases created before the current defaults.
   static const Map<String, List<String>> defaultCategoryStyle = {
     'Salary': ['wallet', '#16A34A'],
     'Freelance': ['laptop', '#F59E0B'],
@@ -24,109 +25,84 @@ class SeedData {
     'Other Expense': ['remove_circle', '#64748B'],
   };
 
-  static Future<void> seedCategories(Database db) async {
-    final categories = [
-      // Income
-      {'id': _uuid.v4(), 'name': 'Salary', 'icon': 'wallet', 'color': '#16A34A', 'type': 'income', 'isCustom': 0},
-      {'id': _uuid.v4(), 'name': 'Freelance', 'icon': 'laptop', 'color': '#F59E0B', 'type': 'income', 'isCustom': 0},
-      {'id': _uuid.v4(), 'name': 'Investment', 'icon': 'trending_up', 'color': '#6366F1', 'type': 'income', 'isCustom': 0},
-      {'id': _uuid.v4(), 'name': 'Gift', 'icon': 'card_giftcard', 'color': '#EC4899', 'type': 'income', 'isCustom': 0},
-      {'id': _uuid.v4(), 'name': 'Interest', 'icon': 'account_balance', 'color': '#0EA5E9', 'type': 'income', 'isCustom': 0},
-      {'id': _uuid.v4(), 'name': 'Other Income', 'icon': 'add_circle', 'color': '#64748B', 'type': 'income', 'isCustom': 0},
-      // Expense
-      {'id': _uuid.v4(), 'name': 'Food & Dining', 'icon': 'restaurant', 'color': '#EF4444', 'type': 'expense', 'isCustom': 0},
-      {'id': _uuid.v4(), 'name': 'Shopping', 'icon': 'shopping_bag', 'color': '#A855F7', 'type': 'expense', 'isCustom': 0},
-      {'id': _uuid.v4(), 'name': 'Transport', 'icon': 'directions_car', 'color': '#3B82F6', 'type': 'expense', 'isCustom': 0},
-      {'id': _uuid.v4(), 'name': 'Bills & Utilities', 'icon': 'receipt_long', 'color': '#F59E0B', 'type': 'expense', 'isCustom': 0},
-      {'id': _uuid.v4(), 'name': 'Entertainment', 'icon': 'movie', 'color': '#EC4899', 'type': 'expense', 'isCustom': 0},
-      {'id': _uuid.v4(), 'name': 'Health', 'icon': 'favorite', 'color': '#F43F5E', 'type': 'expense', 'isCustom': 0},
-      {'id': _uuid.v4(), 'name': 'Education', 'icon': 'school', 'color': '#14B8A6', 'type': 'expense', 'isCustom': 0},
-      {'id': _uuid.v4(), 'name': 'Savings', 'icon': 'savings', 'color': '#10B981', 'type': 'expense', 'isCustom': 0},
-      {'id': _uuid.v4(), 'name': 'Rent', 'icon': 'home', 'color': '#F97316', 'type': 'expense', 'isCustom': 0},
-      {'id': _uuid.v4(), 'name': 'Other Expense', 'icon': 'remove_circle', 'color': '#64748B', 'type': 'expense', 'isCustom': 0},
-    ];
+  /// Default categories, matching the CashPilot CSV format / demo data.
+  /// (name, icon, color) per type.
+  static const List<List<String>> incomeCategories = [
+    ['Salary', 'wallet', '#16A34A'],
+    ['Home M', 'home', '#0EA5E9'],
+    ['Home F', 'home', '#14B8A6'],
+    ['Ar', 'account_balance', '#6366F1'],
+    ['Loan', 'payments', '#F59E0B'],
+    ['Grants', 'card_giftcard', '#EC4899'],
+    ['Miss', 'add_circle', '#64748B'],
+  ];
 
+  static const List<List<String>> expenseCategories = [
+    ['O Food', 'fastfood', '#EF4444'],
+    ['Transportation ⭐', 'directions_car', '#3B82F6'],
+    ['Entertainment', 'movie', '#EC4899'],
+    ['Bazar⭐', 'local_grocery_store', '#22C55E'],
+    ['Medicine', 'local_hospital', '#F43F5E'],
+    ['Baby ⭐', 'child_care', '#F472B6'],
+    ['Telephone ⭐', 'phone', '#0EA5E9'],
+    ['Bills ⭐', 'electric_bolt', '#F59E0B'],
+    ['Home M', 'home', '#F97316'],
+    ['Home F', 'home', '#FB923C'],
+    ['Social', 'celebration', '#A855F7'],
+    ['Shopping', 'shopping_bag', '#8B5CF6'],
+    ['Hospital', 'favorite', '#E11D48'],
+    ['Loan', 'payments', '#D97706'],
+    ['Ar', 'account_balance', '#6366F1'],
+    ['Tax', 'receipt_long', '#78716C'],
+    ['Donation', 'volunteer_activism', '#10B981'],
+    ['Beauty', 'favorite', '#DB2777'],
+    ['Sport & Gym', 'fitness_center', '#0D9488'],
+    ['Fis', 'school', '#14B8A6'],
+    ['Miss', 'remove_circle', '#64748B'],
+    ['others', 'remove_circle', '#94A3B8'],
+  ];
+
+  /// Default accounts: (name, type, icon, color, isDefault).
+  static const List<List<Object>> defaultAccounts = [
+    ['Cash', 'cash', 'wallet', '#16A34A', 1],
+    ['IB Card', 'bank', 'credit_card', '#3B82F6', 0],
+    ['Bkash', 'mobile', 'phone_android', '#E2136E', 0],
+    ['Nagad', 'mobile', 'phone_android', '#F7941D', 0],
+  ];
+
+  static Future<void> seedCategories(Database db) async {
     final batch = db.batch();
-    for (final cat in categories) {
-      batch.insert('categories', cat, conflictAlgorithm: ConflictAlgorithm.ignore);
+    for (final (type, list) in [('income', incomeCategories), ('expense', expenseCategories)]) {
+      for (final c in list) {
+        batch.insert(
+          'categories',
+          {'id': _uuid.v4(), 'name': c[0], 'icon': c[1], 'color': c[2], 'type': type, 'isCustom': 0},
+          conflictAlgorithm: ConflictAlgorithm.ignore,
+        );
+      }
     }
     await batch.commit(noResult: true);
   }
 
   static Future<void> seedAccounts(Database db) async {
     final now = DateTime.now().toIso8601String();
-    final accounts = [
-      {
-        'id': _uuid.v4(),
-        'name': 'Cash Wallet',
-        'type': 'cash',
-        'icon': 'wallet',
-        'color': '#16A34A',
-        'balance': 0.0,
-        'currency': 'USD',
-        'isDefault': 1,
-        'createdAt': now,
-      },
-      {
-        'id': _uuid.v4(),
-        'name': 'Bank Account',
-        'type': 'bank',
-        'icon': 'account_balance',
-        'color': '#4facfe',
-        'balance': 0.0,
-        'currency': 'USD',
-        'isDefault': 0,
-        'createdAt': now,
-      },
-      {
-        'id': _uuid.v4(),
-        'name': 'Credit Card',
-        'type': 'credit',
-        'icon': 'credit_card',
-        'color': '#ff6b6b',
-        'balance': 0.0,
-        'currency': 'USD',
-        'isDefault': 0,
-        'createdAt': now,
-      },
-      {
-        'id': _uuid.v4(),
-        'name': 'Mobile Banking',
-        'type': 'mobile',
-        'icon': 'phone_android',
-        'color': '#a29bfe',
-        'balance': 0.0,
-        'currency': 'USD',
-        'isDefault': 0,
-        'createdAt': now,
-      },
-      {
-        'id': _uuid.v4(),
-        'name': 'Savings Account',
-        'type': 'savings',
-        'icon': 'savings',
-        'color': '#ffeaa7',
-        'balance': 0.0,
-        'currency': 'USD',
-        'isDefault': 0,
-        'createdAt': now,
-      },
-      {
-        'id': _uuid.v4(),
-        'name': 'E-Wallet',
-        'type': 'ewallet',
-        'icon': 'payments',
-        'color': '#fd79a8',
-        'balance': 0.0,
-        'currency': 'USD',
-        'isDefault': 0,
-        'createdAt': now,
-      },
-    ];
-
     final batch = db.batch();
-    for (final acc in accounts) {
-      batch.insert('accounts', acc, conflictAlgorithm: ConflictAlgorithm.ignore);
+    for (final a in defaultAccounts) {
+      batch.insert(
+        'accounts',
+        {
+          'id': _uuid.v4(),
+          'name': a[0],
+          'type': a[1],
+          'icon': a[2],
+          'color': a[3],
+          'balance': 0.0,
+          'currency': 'USD',
+          'isDefault': a[4],
+          'createdAt': now,
+        },
+        conflictAlgorithm: ConflictAlgorithm.ignore,
+      );
     }
     await batch.commit(noResult: true);
   }
